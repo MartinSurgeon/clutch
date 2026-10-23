@@ -10,18 +10,18 @@ import kotlin.math.roundToInt
 object LayerCalc {
 
     enum class TargetState(val label: String) {
-        ON_TARGET("On target"),
-        WATCH("Watch"),
-        OFF_TARGET("Off target"),
-        CLIMBING_TO_PEAK("Climbing to peak"),
-        PAST_PEAK_WINDOW("Past peak window"),
-        NOT_APPLICABLE("Not yet due")
+        ON_TARGET("Good"),
+        WATCH("Watch it"),
+        OFF_TARGET("Needs attention"),
+        CLIMBING_TO_PEAK("Still rising"),
+        PAST_PEAK_WINDOW("Past peak"),
+        NOT_APPLICABLE("Not yet")
     }
 
     enum class WarningSeverity(val priority: Int, val label: String) {
-        CRITICAL(0, "Critical"),
-        SERIOUS(1, "Serious"),
-        WARNING(2, "Warning")
+        CRITICAL(0, "Act now"),
+        SERIOUS(1, "Act today"),
+        WARNING(2, "Keep an eye")
     }
 
     data class FlockInput(
@@ -152,6 +152,22 @@ object LayerCalc {
         val m = mp + (if (mp < 10) 3 else -9)
         val year = y + (if (m <= 2) 1 else 0)
         return "${year.toString().padStart(4, '0')}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
+    }
+
+    private val MONTHS = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    private val WEEKDAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+    /** Day-first date as written in Ghana, e.g. "Fri 23 Oct". Year is added only with [withYear]. */
+    fun friendlyDate(isoDate: String, withYear: Boolean = false): String {
+        val parts = isoDate.trim().split("-")
+        if (parts.size != 3) return isoDate
+        val m = parts[1].toIntOrNull() ?: return isoDate
+        val d = parts[2].toIntOrNull() ?: return isoDate
+        if (m !in 1..12) return isoDate
+        // 1970-01-01 (epoch day 0) was a Thursday
+        val dow = (((parseEpochDay(isoDate) + 3) % 7) + 7) % 7
+        val base = "${WEEKDAYS[dow.toInt()]} $d ${MONTHS[m - 1]}"
+        return if (withYear) "$base ${parts[0]}" else base
     }
 
     fun daysBetween(startIsoDate: String, endIsoDate: String): Int {
@@ -441,7 +457,7 @@ object LayerCalc {
             hdPct - henDayPercent(it.eggs, it.liveHens)
         }
 
-        val working = "${record.eggs} eggs ÷ ${record.liveHens} live hens × 100 = ${format1(hdPct)}%"
+        val working = "${record.eggs} eggs ÷ ${record.liveHens} birds × 100 = ${format1(hdPct)}%"
 
         return DayMetrics(
             date = record.date,
@@ -548,9 +564,9 @@ object LayerCalc {
                     WarningItem(
                         id = "henday_drop_2d",
                         severity = WarningSeverity.CRITICAL,
-                        title = "Hen-day down >3 pts for two days running (${format1(todayHd)}% vs ${format1(prevAvg)}% avg)",
-                        detail = "Production dropped to ${format1(yesterdayHd)}% yesterday and ${format1(todayHd)}% today.",
-                        whatToCheck = "Check feed, water, light, disease, stress."
+                        title = "Laying has dropped two days in a row",
+                        detail = "Laying was ${format1(yesterdayHd)}% yesterday and ${format1(todayHd)}% today. Normal for this pen is ${format1(prevAvg)}%.",
+                        whatToCheck = "Water first, then feed, light hours, heat, and signs of sickness."
                     )
                 )
             }
@@ -563,9 +579,9 @@ object LayerCalc {
                     WarningItem(
                         id = "henday_drop_1d",
                         severity = WarningSeverity.WARNING,
-                        title = "Hen-day down >3 pts today (${format1(todayHd)}% vs ${format1(prevAvg)}% avg)",
-                        detail = "Today's lay is ${format1(prevAvg - todayHd)} points below the previous 7-day average.",
-                        whatToCheck = "Check feed, water, light, disease, stress."
+                        title = "Laying dropped today",
+                        detail = "Laying is ${format1(todayHd)}%. That is ${format1(prevAvg - todayHd)} points below this pen's normal ${format1(prevAvg)}%.",
+                        whatToCheck = "Water first, then feed, light hours, heat, and signs of sickness."
                     )
                 )
             }
@@ -580,9 +596,9 @@ object LayerCalc {
                     WarningItem(
                         id = "water_drop",
                         severity = WarningSeverity.SERIOUS,
-                        title = "Water per bird below 85% of 7-day average (${format0(dayMetrics.waterPerBirdMl)} mL, ${format0(pctOfAvg)}% of avg)",
-                        detail = "Previous 7-day average was ${format0(prevWaterAvg)} mL/bird. Drinking often falls before eggs do.",
-                        whatToCheck = "Check drinker lines, airlocks, nipple flow rate, water tank level, water temperature, and early disease."
+                        title = "Birds are drinking less water",
+                        detail = "${format0(dayMetrics.waterPerBirdMl)} mL per bird today, only ${format0(pctOfAvg)}% of the usual ${format0(prevWaterAvg)} mL. Less drinking often comes before fewer eggs.",
+                        whatToCheck = "Drinkers and nipples, water tank level, hot water in the pipes, and early sickness."
                     )
                 )
             }
@@ -594,22 +610,22 @@ object LayerCalc {
                 WarningItem(
                     id = "mortality_critical",
                     severity = WarningSeverity.CRITICAL,
-                    title = "7-day mortality over 0.5% (${format2(dayMetrics.sevenDayMortalityPct)}%)",
-                    detail = "${dayMetrics.deathsIn7Days} birds died in the last 7 days.",
-                    whatToCheck = "Check for acute disease, heat stress, water failure, smothering, or predators; call a vet if deaths continue."
+                    title = "Too many birds dying this week",
+                    detail = "${dayMetrics.deathsIn7Days} birds died in the last 7 days (${format2(dayMetrics.sevenDayMortalityPct)}%).",
+                    whatToCheck = "Look for sickness, heat stress, no water, crowding, or snakes and other predators. Call your vet if deaths continue."
                 )
             )
         } else if (dayMetrics.sevenDayMortalityPct > 0.1) {
             val singleBirdNote = if (dayMetrics.deathsIn7Days == 1) {
-                " Note: in small flocks one bird crosses the 0.1% line."
+                " In a small pen, even one dead bird will show this."
             } else ""
             warnings.add(
                 WarningItem(
                     id = "mortality_warning",
                     severity = WarningSeverity.WARNING,
-                    title = "7-day mortality over 0.1% (${format2(dayMetrics.sevenDayMortalityPct)}%)",
-                    detail = "${dayMetrics.deathsIn7Days} ${if (dayMetrics.deathsIn7Days == 1) "bird" else "birds"} died in the last 7 days.$singleBirdNote",
-                    whatToCheck = "Check dead birds for prolapse, pecking, weight loss, or respiratory signs; verify ventilation and water."
+                    title = "Some birds died this week",
+                    detail = "${dayMetrics.deathsIn7Days} ${if (dayMetrics.deathsIn7Days == 1) "bird" else "birds"} died in the last 7 days (${format2(dayMetrics.sevenDayMortalityPct)}%).$singleBirdNote",
+                    whatToCheck = "Look at the dead birds for pecking, prolapse, thinness, or breathing problems. Check air flow and water."
                 )
             )
         }
@@ -620,9 +636,9 @@ object LayerCalc {
                 WarningItem(
                     id = "cracked_high",
                     severity = WarningSeverity.WARNING,
-                    title = "Cracked eggs over 2% (${format1(dayMetrics.crackedPct)}%)",
-                    detail = "${latest.cracked} cracked out of ${latest.eggs} eggs collected.",
-                    whatToCheck = "Check calcium, heat, collection frequency, handling, hen age."
+                    title = "Too many cracked eggs (${format1(dayMetrics.crackedPct)}%)",
+                    detail = "${latest.cracked} cracked out of ${latest.eggs} eggs. Keep it under 2%.",
+                    whatToCheck = "Give shell grit or oyster shell, pick eggs more often, and handle crates gently."
                 )
             )
         }
@@ -633,9 +649,9 @@ object LayerCalc {
                 WarningItem(
                     id = "dirty_high",
                     severity = WarningSeverity.WARNING,
-                    title = "Dirty eggs over 3% (${format1(dayMetrics.dirtyPct)}%)",
-                    detail = "${latest.dirty} dirty out of ${latest.eggs} eggs collected.",
-                    whatToCheck = "Check nest boxes and litter condition."
+                    title = "Too many dirty eggs (${format1(dayMetrics.dirtyPct)}%)",
+                    detail = "${latest.dirty} dirty out of ${latest.eggs} eggs. Keep it under 3%.",
+                    whatToCheck = "Change nest box litter and fix leaking drinkers that wet the floor."
                 )
             )
         }
@@ -646,9 +662,9 @@ object LayerCalc {
                 WarningItem(
                     id = "soft_shell_high",
                     severity = WarningSeverity.WARNING,
-                    title = "Soft-shell eggs over 1% (${format1(dayMetrics.softShellPct)}%)",
-                    detail = "${latest.softShell} soft-shell out of ${latest.eggs} eggs collected.",
-                    whatToCheck = "Check calcium and heat; ask a vet about infectious bronchitis or egg drop syndrome."
+                    title = "Too many soft-shell eggs (${format1(dayMetrics.softShellPct)}%)",
+                    detail = "${latest.softShell} soft-shell out of ${latest.eggs} eggs. Keep it under 1%.",
+                    whatToCheck = "Check calcium in the feed and heat in the pen. If it continues, ask your vet about IB or egg drop syndrome."
                 )
             )
         }
@@ -659,9 +675,9 @@ object LayerCalc {
                 WarningItem(
                     id = "feed_low",
                     severity = WarningSeverity.WARNING,
-                    title = "Feed per bird under 100 g (${format0(dayMetrics.feedPerBirdG)} g)",
+                    title = "Birds are eating too little (${format0(dayMetrics.feedPerBirdG)} g each)",
                     detail = "Target is 110–125 g per bird per day.",
-                    whatToCheck = "Check heat, water, feed quality, health."
+                    whatToCheck = "Heat in the pen, water supply, spoilt feed, or sickness. Feed in the cool morning and evening."
                 )
             )
         } else if (dayMetrics.feedPerBirdG > 130.0) {
@@ -669,9 +685,9 @@ object LayerCalc {
                 WarningItem(
                     id = "feed_high",
                     severity = WarningSeverity.WARNING,
-                    title = "Feed per bird over 130 g (${format0(dayMetrics.feedPerBirdG)} g)",
+                    title = "Feed is being used too fast (${format0(dayMetrics.feedPerBirdG)} g each)",
                     detail = "Target is 110–125 g per bird per day.",
-                    whatToCheck = "Check wastage, rats, wild birds."
+                    whatToCheck = "Feed spilling from feeders, rats, or wild birds eating the feed."
                 )
             )
         }
@@ -683,9 +699,9 @@ object LayerCalc {
                 WarningItem(
                     id = "fcr_high",
                     severity = WarningSeverity.WARNING,
-                    title = "FCR over 2.4 (${format2(fcrVal)} kg feed / kg eggs)",
-                    detail = "More than 2.4 kg of feed is being used per kg of egg mass.",
-                    whatToCheck = "Check feeder spillage, low rate of lay, small egg size, or rodent feed loss."
+                    title = "Too much feed for the eggs you are getting",
+                    detail = "${format2(fcrVal)} kg of feed for every 1 kg of eggs. Aim for 2.2 or less.",
+                    whatToCheck = "Feed spilling, rats, low laying, or small eggs."
                 )
             )
         }
@@ -697,9 +713,9 @@ object LayerCalc {
                 WarningItem(
                     id = "peak_window_low",
                     severity = WarningSeverity.WARNING,
-                    title = "7-day average hen-day under 85% (${format1(last7.avgHenDayPct)}%)",
-                    detail = "Flock is ${dayMetrics.ageWeeks} weeks old (peak window is 25–35 weeks).",
-                    whatToCheck = "Check light hours (14–16h), feed intake, water availability, and flock uniformity."
+                    title = "Laying is low for this age (${format1(last7.avgHenDayPct)}%)",
+                    detail = "Birds are ${dayMetrics.ageWeeks} weeks old. Between 25 and 35 weeks, aim for 85% or more.",
+                    whatToCheck = "Light hours (14 to 16 a day), how much they eat and drink, and whether birds are the same size."
                 )
             )
         }
@@ -710,9 +726,9 @@ object LayerCalc {
                 WarningItem(
                     id = "no_eggs_21w",
                     severity = WarningSeverity.WARNING,
-                    title = "No eggs in 7 days at ${dayMetrics.ageWeeks} weeks",
-                    detail = "Hens are past 21 weeks with zero eggs recorded this week.",
-                    whatToCheck = "Check body weight, light hours, rearing feed."
+                    title = "No eggs this week at ${dayMetrics.ageWeeks} weeks old",
+                    detail = "Birds are past 21 weeks but no eggs were recorded this week.",
+                    whatToCheck = "Body weight, light hours, and whether they are still on grower feed."
                 )
             )
         }
@@ -743,13 +759,13 @@ object LayerCalc {
     }
 
     fun formatCratesHelper(eggs: Int): String {
-        if (eggs <= 0) return "0 crates of 30"
+        if (eggs <= 0) return "0 crates"
         val crates = eggs / 30
         val rem = eggs % 30
         return when {
-            crates == 0 -> "$rem ${if (rem == 1) "egg" else "eggs"} (under 1 crate of 30)"
-            rem == 0 -> "$crates ${if (crates == 1) "crate" else "crates"} of 30"
-            else -> "$crates ${if (crates == 1) "crate" else "crates"} of 30 + $rem ${if (rem == 1) "egg" else "eggs"}"
+            crates == 0 -> "$rem ${if (rem == 1) "egg" else "eggs"} (less than a crate)"
+            rem == 0 -> "$crates ${if (crates == 1) "crate" else "crates"}"
+            else -> "$crates ${if (crates == 1) "crate" else "crates"} and $rem ${if (rem == 1) "egg" else "eggs"}"
         }
     }
 }

@@ -135,4 +135,20 @@ class LayerCalcTest {
         // Ordered most severe first: CRITICAL before SERIOUS
         assertEquals(LayerCalc.WarningSeverity.CRITICAL, warnings.first().severity)
     }
+
+    @Test
+    fun `friendlyDate writes day before month with weekday`() {
+        assertEquals("Fri 23 Oct", LayerCalc.friendlyDate("2026-10-23"))
+        assertEquals("Thu 1 Jan 1970", LayerCalc.friendlyDate("1970-01-01", withYear = true))
+        assertEquals("Sun 1 Mar", LayerCalc.friendlyDate("2026-03-01"))
+        assertEquals("not-a-date", LayerCalc.friendlyDate("not-a-date"))
+    }
+
+    @Test
+    fun `crates helper counts in crates of 30`() {
+        assertEquals("0 crates", LayerCalc.formatCratesHelper(0))
+        assertEquals("12 eggs (less than a crate)", LayerCalc.formatCratesHelper(12))
+        assertEquals("1 crate", LayerCalc.formatCratesHelper(30))
+        assertEquals("14 crates and 5 eggs", LayerCalc.formatCratesHelper(425))
+    }
 }

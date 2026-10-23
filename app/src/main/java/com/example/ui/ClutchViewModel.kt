@@ -19,9 +19,9 @@ import java.util.Calendar
 import java.util.UUID
 
 enum class TrendWindow(val label: String, val days: Int?) {
-    DAYS_30("30 days", 30),
-    DAYS_90("90 days", 90),
-    WHOLE_FLOCK("Whole flock", null)
+    DAYS_30("Last 30 days", 30),
+    DAYS_90("Last 3 months", 90),
+    WHOLE_FLOCK("All time", null)
 }
 
 data class FlockCardModel(
@@ -241,9 +241,9 @@ class ClutchViewModel(
                 val flockId = repository.insertExampleFlockAndRecords(todayDate)
                 _selectedFlockId.value = flockId
                 _selectedRecordDate.value = todayDate
-                _snackbarEvents.tryEmit("Loaded 12 weeks of example data for Pen A")
-            }.onFailure { e ->
-                _errorMessage.value = e.message ?: "Could not load example data."
+                _snackbarEvents.tryEmit("Sample pen added. Look around, then clear it when you are ready.")
+            }.onFailure {
+                _snackbarEvents.tryEmit("Sorry, the sample could not load. Please try again.")
             }
         }
     }
@@ -253,9 +253,9 @@ class ClutchViewModel(
             runCatching {
                 repository.removeExampleData()
                 _selectedFlockId.value = null
-                _snackbarEvents.tryEmit("Example data removed")
-            }.onFailure { e ->
-                _errorMessage.value = e.message ?: "Could not remove example data."
+                _snackbarEvents.tryEmit("Sample data cleared")
+            }.onFailure {
+                _snackbarEvents.tryEmit("Sorry, the sample could not be cleared. Please try again.")
             }
         }
     }
@@ -281,17 +281,20 @@ class ClutchViewModel(
                 archived = false,
                 isExample = false
             )
-            repository.saveFlock(entity)
-            _selectedFlockId.value = id
-            _snackbarEvents.tryEmit("Saved flock ${entity.name}")
-            onSaved(id)
+            runCatching { repository.saveFlock(entity) }
+                .onSuccess {
+                    _selectedFlockId.value = id
+                    _snackbarEvents.tryEmit("${entity.name} saved")
+                    onSaved(id)
+                }
+                .onFailure { _snackbarEvents.tryEmit("Sorry, ${entity.name} was not saved. Please try again.") }
         }
     }
 
     fun archiveFlock(flock: FlockEntity, archive: Boolean) {
         viewModelScope.launch {
             repository.archiveFlock(flock.id, archive)
-            val msg = if (archive) "Archived ${flock.name}" else "Restored ${flock.name}"
+            val msg = if (archive) "${flock.name} moved to old pens" else "${flock.name} is back in your pens"
             _snackbarEvents.tryEmit(msg)
         }
     }
@@ -301,10 +304,10 @@ class ClutchViewModel(
             val count = repository.countRecordsForFlock(flock.id)
             if (count > 0) {
                 repository.archiveFlock(flock.id, true)
-                _snackbarEvents.tryEmit("${flock.name} has $count records and was archived instead")
+                _snackbarEvents.tryEmit("${flock.name} has $count days of records, so it was moved to old pens instead")
             } else {
                 repository.deleteFlock(flock.id)
-                _snackbarEvents.tryEmit("Deleted ${flock.name}")
+                _snackbarEvents.tryEmit("${flock.name} removed")
             }
         }
     }
@@ -324,7 +327,8 @@ class ClutchViewModel(
         avgEggWeightG: Double?,
         maxTempC: Double?,
         notes: String,
-        onSaved: () -> Unit
+        onSaved: () -> Unit,
+        onFailed: () -> Unit = {}
     ) {
         viewModelScope.launch {
             val record = DailyRecordEntity(
@@ -344,9 +348,15 @@ class ClutchViewModel(
                 maxTempC = maxTempC,
                 notes = notes.trim()
             )
-            repository.saveDailyRecord(record)
-            _snackbarEvents.tryEmit("Saved for ${flock.name}")
-            onSaved()
+            runCatching { repository.saveDailyRecord(record) }
+                .onSuccess {
+                    _snackbarEvents.tryEmit("Saved! ${flock.name} is up to date.")
+                    onSaved()
+                }
+                .onFailure {
+                    _snackbarEvents.tryEmit("Sorry, the day was not saved. Please try again.")
+                    onFailed()
+                }
         }
     }
 
@@ -357,7 +367,7 @@ class ClutchViewModel(
     ) {
         viewModelScope.launch {
             repository.deleteDailyRecord(flock.id, date)
-            _snackbarEvents.tryEmit("Deleted record for ${flock.name} ($date)")
+            _snackbarEvents.tryEmit("Record for ${LayerCalc.friendlyDate(date)} deleted")
             onDeleted()
         }
     }

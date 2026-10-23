@@ -1,19 +1,19 @@
 <resources>
     <string name="app_name">Clutch</string>
-    <string name="nav_today">Today</string>
+    <string name="nav_today">Home</string>
     <string name="nav_record">Record</string>
-    <string name="nav_trends">Trends</string>
-    <string name="nav_flocks">Flocks</string>
-    <string name="empty_first_run_title">Keep your flock ledger in one place</string>
-    <string name="empty_first_run_subtitle">Record daily eggs, feed, water, and bird counts offline. Clutch calculates performance and warns you early when something slips.</string>
-    <string name="btn_add_first_flock">Add your first flock</string>
-    <string name="btn_try_example_data">Try with example data</string>
-    <string name="banner_example_data">Showing example data (12 weeks for Pen A)</string>
-    <string name="btn_remove_example">Remove example</string>
-    <string name="btn_record_today">Record today</string>
-    <string name="btn_edit_today">Edit today</string>
+    <string name="nav_trends">Reports</string>
+    <string name="nav_flocks">Pens</string>
+    <string name="empty_first_run_title">Akwaaba! Welcome to Clutch</string>
+    <string name="empty_first_run_subtitle">Keep your layer farm records in one place, and know early when something is wrong.</string>
+    <string name="btn_add_first_flock">Add my first pen</string>
+    <string name="btn_try_example_data">Try with a sample pen</string>
+    <string name="banner_example_data">You are viewing a sample pen</string>
+    <string name="btn_remove_example">Clear sample</string>
+    <string name="btn_record_today">Record today\'s count</string>
+    <string name="btn_edit_today">Change</string>
     <string name="btn_save_day">Save day</string>
-    <string name="btn_delete_day">Delete this day\'s record</string>
-    <string name="btn_add_flock">Add flock</string>
-    <string name="menu_export_csv">Export CSV</string>
+    <string name="btn_delete_day">Delete this day</string>
+    <string name="btn_add_flock">Add a pen</string>
+    <string name="menu_export_csv">Share records</string>
 </resources>

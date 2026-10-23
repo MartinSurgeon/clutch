@@ -7,6 +7,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -23,10 +25,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +43,9 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,8 +68,13 @@ import com.example.domain.LayerCalc
 import com.example.ui.ClutchUiState
 import com.example.ui.RecordWithMetrics
 import com.example.ui.TrendWindow
-import com.example.ui.components.ClutchPrimaryButton
+import com.example.ui.components.ClutchCard
+import com.example.ui.components.ClutchDimens
+import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.ScreenColumn
+import com.example.ui.components.SectionHeader
 import com.example.ui.components.StatusChip
+import com.example.ui.components.SummaryRow
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.StatusAmberBorderDark
 import com.example.ui.theme.StatusAmberBorderLight
@@ -73,6 +87,11 @@ import com.example.ui.theme.StatusRedBorderLight
 import kotlin.math.abs
 import kotlin.math.max
 
+private enum class ReportView(val label: String) {
+    CHARTS("Charts"),
+    DAYS("Day by day")
+}
+
 @Composable
 fun TrendsScreen(
     uiState: ClutchUiState,
@@ -83,42 +102,20 @@ fun TrendsScreen(
 ) {
     val dashboard = uiState.activeDashboard
     if (dashboard == null || dashboard.allRecordsAsc.isEmpty()) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(24.dp)
-                .testTag("trends_empty_state"),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "No trend data yet",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Record daily numbers to see Hen-day %, feed, water, and weekly mortality charts.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    ClutchPrimaryButton(
-                        text = "Record today",
-                        onClick = onNavigateToRecord,
-                        testTag = "trends_record_today_button"
-                    )
-                }
-            }
+        ScreenColumn(modifier = modifier, testTag = "trends_empty_state") {
+            EmptyStateCard(
+                icon = Icons.Outlined.Insights,
+                title = "No reports yet",
+                body = "Record a few days and your laying, feed, water and deaths will show here as simple charts.",
+                primaryLabel = "Record today's count",
+                onPrimary = onNavigateToRecord,
+                primaryTestTag = "trends_record_today_button"
+            )
         }
         return
     }
+
+    var view by rememberSaveable { mutableStateOf(ReportView.CHARTS) }
 
     val allRecords = dashboard.allRecordsAsc
     val latestEpoch = LayerCalc.parseEpochDay(allRecords.last().entity.date)
@@ -140,6 +137,11 @@ fun TrendsScreen(
             .sortedByDescending { it.key }
     }
 
+    val minWeek = filteredRecords.minOfOrNull { it.metrics.ageWeeks } ?: 0
+    val weeklyMortalityInWindow = remember(dashboard.weeklyMortality, minWeek) {
+        dashboard.weeklyMortality.filter { it.ageWeeks >= minWeek }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -148,129 +150,122 @@ fun TrendsScreen(
     ) {
         LazyColumn(
             modifier = Modifier
-                .widthIn(max = 600.dp)
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+                .widthIn(max = ClutchDimens.ContentMaxWidth)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(ClutchDimens.ScreenPadding),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                Spacer(modifier = Modifier.height(4.dp))
                 WindowFilterRow(
                     selected = uiState.trendWindow,
                     onSelect = onSelectWindow
                 )
             }
 
-            // 1. Hen-day % Chart with shaded 85-95% band
             item {
-                LineTrendChartCard(
-                    title = "Hen-day %",
-                    subtitle = "Eggs laid per 100 live hens (target band 85–95%)",
-                    points = filteredRecords.map {
-                        ChartPoint(
-                            label = "${it.entity.date} (${it.metrics.ageWeeks}w)",
-                            value = it.metrics.henDayPct,
-                            formatted = "${LayerCalc.format1(it.metrics.henDayPct)}%"
-                        )
-                    },
-                    bandMin = 85.0,
-                    bandMax = 95.0,
-                    bandLabel = "85–95% target band",
-                    yMinFloor = 0.0,
-                    yMaxCeiling = 100.0,
-                    testTag = "chart_henday"
-                )
-            }
-
-            // 2. Feed per bird Chart with shaded 110-125 g band
-            item {
-                LineTrendChartCard(
-                    title = "Feed per bird (g)",
-                    subtitle = "Grams of feed per live hen (target band 110–125 g)",
-                    points = filteredRecords.map {
-                        ChartPoint(
-                            label = "${it.entity.date} (${it.metrics.ageWeeks}w)",
-                            value = it.metrics.feedPerBirdG,
-                            formatted = "${LayerCalc.format0(it.metrics.feedPerBirdG)} g"
-                        )
-                    },
-                    bandMin = 110.0,
-                    bandMax = 125.0,
-                    bandLabel = "110–125 g target band",
-                    yMinFloor = 60.0,
-                    yMaxCeiling = 150.0,
-                    testTag = "chart_feed"
-                )
-            }
-
-            // 3. Water per bird Chart
-            item {
-                LineTrendChartCard(
-                    title = "Water per bird (mL)",
-                    subtitle = "Millilitres of water drunk per live hen",
-                    points = filteredRecords.map {
-                        ChartPoint(
-                            label = "${it.entity.date} (${it.metrics.ageWeeks}w)",
-                            value = it.metrics.waterPerBirdMl,
-                            formatted = "${LayerCalc.format0(it.metrics.waterPerBirdMl)} mL"
-                        )
-                    },
-                    bandMin = null,
-                    bandMax = null,
-                    bandLabel = null,
-                    yMinFloor = 100.0,
-                    yMaxCeiling = 280.0,
-                    testTag = "chart_water"
-                )
-            }
-
-            // 4. Weekly mortality bars with 0.1% line
-            item {
-                WeeklyMortalityBarChartCard(
-                    points = dashboard.weeklyMortality,
-                    testTag = "chart_weekly_mortality"
-                )
+                PeriodSummaryCard(records = filteredRecords)
             }
 
             item {
-                Text(
-                    text = "Daily ledger by week of age",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    text = "Tap any day to open and edit its record",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ReportViewSwitch(selected = view, onSelect = { view = it })
             }
 
-            groupedByWeekDesc.forEach { (ageWeeks, weekRecords) ->
-                item(key = "week_$ageWeeks") {
-                    WeekDailyGroupCard(
-                        ageWeeks = ageWeeks,
-                        records = weekRecords,
-                        onTapDayToEdit = onTapDayToEdit
+            if (view == ReportView.CHARTS) {
+                item {
+                    LineTrendChartCard(
+                        title = "Laying %",
+                        subtitle = "Eggs for every 100 birds. Green band is the good range (85–95%).",
+                        points = filteredRecords.map {
+                            ChartPoint(
+                                label = "${LayerCalc.friendlyDate(it.entity.date)} • wk ${it.metrics.ageWeeks}",
+                                value = it.metrics.henDayPct,
+                                formatted = "${LayerCalc.format1(it.metrics.henDayPct)}%"
+                            )
+                        },
+                        bandMin = 85.0,
+                        bandMax = 95.0,
+                        bandLabel = "Good: 85–95%",
+                        yMinFloor = 0.0,
+                        yMaxCeiling = 100.0,
+                        testTag = "chart_henday"
                     )
                 }
-            }
 
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
+                item {
+                    LineTrendChartCard(
+                        title = "Feed per bird",
+                        subtitle = "Grams each bird ate. Green band is the good range (110–125 g).",
+                        points = filteredRecords.map {
+                            ChartPoint(
+                                label = "${LayerCalc.friendlyDate(it.entity.date)} • wk ${it.metrics.ageWeeks}",
+                                value = it.metrics.feedPerBirdG,
+                                formatted = "${LayerCalc.format0(it.metrics.feedPerBirdG)} g"
+                            )
+                        },
+                        bandMin = 110.0,
+                        bandMax = 125.0,
+                        bandLabel = "Good: 110–125 g",
+                        yMinFloor = 60.0,
+                        yMaxCeiling = 150.0,
+                        testTag = "chart_feed"
+                    )
+                }
+
+                item {
+                    LineTrendChartCard(
+                        title = "Water per bird",
+                        subtitle = "Millilitres each bird drank. A sudden drop is an early warning.",
+                        points = filteredRecords.map {
+                            ChartPoint(
+                                label = "${LayerCalc.friendlyDate(it.entity.date)} • wk ${it.metrics.ageWeeks}",
+                                value = it.metrics.waterPerBirdMl,
+                                formatted = "${LayerCalc.format0(it.metrics.waterPerBirdMl)} mL"
+                            )
+                        },
+                        bandMin = null,
+                        bandMax = null,
+                        bandLabel = null,
+                        yMinFloor = 100.0,
+                        yMaxCeiling = 280.0,
+                        testTag = "chart_water"
+                    )
+                }
+
+                item {
+                    WeeklyMortalityBarChartCard(
+                        points = weeklyMortalityInWindow.ifEmpty { dashboard.weeklyMortality },
+                        testTag = "chart_weekly_mortality"
+                    )
+                }
+            } else {
+                item {
+                    Text(
+                        text = "Tap any day to change it",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                groupedByWeekDesc.forEach { (ageWeeks, weekRecords) ->
+                    item(key = "week_$ageWeeks") {
+                        WeekDailyGroupCard(
+                            ageWeeks = ageWeeks,
+                            records = weekRecords,
+                            onTapDayToEdit = onTapDayToEdit
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun WindowFilterRow(
     selected: TrendWindow,
     onSelect: (TrendWindow) -> Unit
 ) {
-    FlowRow(
+    Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -282,20 +277,68 @@ private fun WindowFilterRow(
                 label = {
                     Text(
                         text = window.label,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1
                     )
                 },
-                leadingIcon = if (isSelected) {
-                    {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                } else null,
-                modifier = Modifier.testTag("filter_chip_${window.name.lowercase()}")
+                modifier = Modifier
+                    .heightIn(min = 40.dp)
+                    .testTag("filter_chip_${window.name.lowercase()}")
             )
+        }
+    }
+}
+
+@Composable
+private fun PeriodSummaryCard(records: List<RecordWithMetrics>) {
+    val totalEggs = records.sumOf { it.entity.eggs }
+    val avgLaying = if (records.isEmpty()) 0.0 else records.map { it.metrics.henDayPct }.average()
+    val totalDeaths = records.sumOf { it.entity.deaths }
+    val totalFeed = records.sumOf { it.entity.feedKg }
+
+    ClutchCard(modifier = Modifier.testTag("period_summary_card")) {
+        SectionHeader(
+            title = "Summary",
+            subtitle = "${records.size} recorded ${if (records.size == 1) "day" else "days"}"
+        )
+        SummaryRow(
+            label = "Eggs picked",
+            caption = LayerCalc.formatCratesHelper(totalEggs),
+            value = "$totalEggs"
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SummaryRow(label = "Average laying", value = "${LayerCalc.format1(avgLaying)}%")
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SummaryRow(
+            label = "Feed used",
+            caption = "About ${LayerCalc.format1(totalFeed / 50.0)} bags of 50 kg",
+            value = "${LayerCalc.format0(totalFeed)} kg"
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        SummaryRow(label = "Birds that died", value = "$totalDeaths")
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReportViewSwitch(
+    selected: ReportView,
+    onSelect: (ReportView) -> Unit
+) {
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("report_view_switch")
+    ) {
+        ReportView.entries.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = ReportView.entries.size),
+                modifier = Modifier.heightIn(min = 48.dp)
+            ) {
+                Text(option.label)
+            }
         }
     }
 }
@@ -380,7 +423,7 @@ private fun LineTrendChartCard(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.TouchApp,
-                            contentDescription = "Tap chart to inspect day",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
@@ -510,7 +553,7 @@ private fun LineTrendChartCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = points.first().label,
+                    text = points.first().label.substringBefore(" •"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -522,7 +565,7 @@ private fun LineTrendChartCard(
                     )
                 }
                 Text(
-                    text = points.last().label,
+                    text = points.last().label.substringBefore(" •"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -562,13 +605,13 @@ private fun WeeklyMortalityBarChartCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "Weekly mortality %",
+                text = "Deaths by week of age",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Deaths per week of age with 0.1% target line",
+                text = "Bars under the dashed line (0.1%) are good.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -589,12 +632,12 @@ private fun WeeklyMortalityBarChartCard(
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.TouchApp,
-                            contentDescription = "Tap bar to inspect week",
+                            contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
-                            text = "Week ${selectedBar.ageWeeks} (${selectedBar.deaths} ${if (selectedBar.deaths == 1) "death" else "deaths"})",
+                            text = "Week ${selectedBar.ageWeeks}: ${selectedBar.deaths} ${if (selectedBar.deaths == 1) "bird" else "birds"} died",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = JetBrainsMonoFontFamily
                             ),
@@ -678,7 +721,7 @@ private fun WeeklyMortalityBarChartCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Dashed line: 0.10% target",
+                    text = "Tap a bar to see the week",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -721,19 +764,19 @@ private fun WeekDailyGroupCard(
             ) {
                 Column {
                     Text(
-                        text = "Week $ageWeeks",
+                        text = "Week $ageWeeks of age",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "${records.size} ${if (records.size == 1) "day" else "days"} • $weekEggs eggs",
+                        text = "${records.size} ${if (records.size == 1) "day" else "days"} • ${LayerCalc.formatCratesHelper(weekEggs)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(
-                    text = "Avg ${LayerCalc.format1(weekAvgHenDay)}%",
+                    text = "${LayerCalc.format1(weekAvgHenDay)}% laying",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -780,13 +823,13 @@ private fun DailyRecordLedgerRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = e.date,
+                text = LayerCalc.friendlyDate(e.date),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "${e.eggs} eggs • ${LayerCalc.format0(m.feedPerBirdG)} g feed • ${LayerCalc.format0(m.waterPerBirdMl)} mL water",
+                text = "${e.eggs} eggs • ${LayerCalc.format0(m.feedPerBirdG)} g feed • ${e.deaths} died",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -807,7 +850,7 @@ private fun DailyRecordLedgerRow(
                 )
                 Icon(
                     imageVector = Icons.Outlined.ChevronRight,
-                    contentDescription = "Edit ${e.date}",
+                    contentDescription = "Change ${LayerCalc.friendlyDate(e.date)}",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
