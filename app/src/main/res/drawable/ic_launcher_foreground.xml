@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Subtle ledger card frame -->
+    <path
+        android:fillColor="#FAF7F0"
+        android:pathData="M54,24 C39,24 30,43 30,60 C30,74.5 40.5,84 54,84 C67.5,84 78,74.5 78,60 C78,43 69,24 54,24 Z" />
+    <!-- Warm egg-yolk center -->
+    <path
+        android:fillColor="#E89B25"
+        android:pathData="M54,46 C46.27,46 40,52.27 40,60 C40,67.73 46.27,74 54,74 C61.73,74 68,67.73 68,60 C68,52.27 61.73,46 54,46 Z" />
+    <!-- Yolk highlight -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M49,52 C46.79,52 45,53.79 45,56 C45,58.21 46.79,60 49,60 C51.21,60 53,58.21 53,56 C53,53.79 51.21,52 49,52 Z" />
+</vector>

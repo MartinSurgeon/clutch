@@ -1,0 +1,6 @@
+{
+  "name": "Clutch",
+  "description": "Offline-first farm ledger and performance tracker for laying hen flocks, calculating daily production metrics and early health or feed warnings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
