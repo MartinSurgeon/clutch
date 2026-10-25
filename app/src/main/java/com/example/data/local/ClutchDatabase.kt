@@ -8,6 +8,8 @@ import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 class SyncStateConverters {
@@ -66,11 +68,40 @@ interface ClutchDao {
 
     @Query("DELETE FROM daily_records WHERE flockId IN (SELECT id FROM flocks WHERE isExample = 1)")
     suspend fun hardDeleteExampleRecords()
+
+    @Query("SELECT * FROM weekly_notes WHERE deleted = 0")
+    fun observeAllWeeklyNotes(): Flow<List<WeeklyNoteEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertWeeklyNote(note: WeeklyNoteEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertWeeklyNotes(notes: List<WeeklyNoteEntity>)
+
+    @Query("DELETE FROM weekly_notes WHERE flockId IN (SELECT id FROM flocks WHERE isExample = 1)")
+    suspend fun hardDeleteExampleWeeklyNotes()
+}
+
+/**
+ * v1 -> v2: adds body weight and uniformity to daily records, and the weekly notes table.
+ * Additive only, so every farmer's existing records are kept.
+ */
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE daily_records ADD COLUMN bodyWeightG REAL")
+        db.execSQL("ALTER TABLE daily_records ADD COLUMN uniformityPct REAL")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `weekly_notes` (" +
+                "`id` TEXT NOT NULL, `flockId` TEXT NOT NULL, `ageWeek` INTEGER NOT NULL, " +
+                "`notes` TEXT NOT NULL, `actions` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                "`deleted` INTEGER NOT NULL, `syncState` TEXT NOT NULL, PRIMARY KEY(`id`))"
+        )
+    }
 }
 
 @Database(
-    entities = [FlockEntity::class, DailyRecordEntity::class],
-    version = 1,
+    entities = [FlockEntity::class, DailyRecordEntity::class, WeeklyNoteEntity::class],
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(SyncStateConverters::class)

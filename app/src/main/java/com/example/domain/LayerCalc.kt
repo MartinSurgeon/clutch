@@ -46,7 +46,9 @@ object LayerCalc {
         val waterL: Double = 0.0,
         val avgEggWeightG: Double? = null,
         val maxTempC: Double? = null,
-        val notes: String = ""
+        val notes: String = "",
+        val bodyWeightG: Double? = null,
+        val uniformityPct: Double? = null
     )
 
     data class MetricExplanation(
@@ -390,6 +392,25 @@ object LayerCalc {
     fun evaluateSoftShellTarget(softShellPct: Double): TargetState {
         return when {
             softShellPct <= 1.0 -> TargetState.ON_TARGET
+            else -> TargetState.OFF_TARGET
+        }
+    }
+
+    /** Flock uniformity: % of weighed birds within ±10% of the average body weight. */
+    fun evaluateUniformityTarget(uniformityPct: Double?): TargetState {
+        if (uniformityPct == null) return TargetState.NOT_APPLICABLE
+        return when {
+            uniformityPct >= 80.0 -> TargetState.ON_TARGET
+            uniformityPct >= 70.0 -> TargetState.WATCH
+            else -> TargetState.OFF_TARGET
+        }
+    }
+
+    /** All bad eggs together (cracked + dirty + soft-shell); the separate limits add up to 6%. */
+    fun evaluateEggQualityTarget(badEggPct: Double): TargetState {
+        return when {
+            badEggPct <= 4.0 -> TargetState.ON_TARGET
+            badEggPct <= 6.0 -> TargetState.WATCH
             else -> TargetState.OFF_TARGET
         }
     }

@@ -2,32 +2,45 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Farm Ledger Light Palette (Off-white ledger paper, Blue-black ink, Ledger-blue accent)
-val LedgerPaperLight = Color(0xFFFAF7F0)
-val LedgerCardSurfaceLight = Color(0xFFFFFFFF)
-val LedgerCardVariantLight = Color(0xFFF1ECE1)
-val LedgerInkLight = Color(0xFF101C2C)       // Deep blue-black (>14:1 contrast on off-white)
-val LedgerInkSecondaryLight = Color(0xFF3A4A5E) // Muted slate blue-black (>7.5:1 contrast)
-val LedgerBlueLight = Color(0xFF1E4E8C)      // Crisp ledger-blue primary (>7.2:1 on white)
-val LedgerBlueContainerLight = Color(0xFFDCE7F7)
-val OnLedgerBlueContainerLight = Color(0xFF0E294B)
-val LedgerRuleOutlineLight = Color(0xFFC8C2B4)
+// Farm Green brand palette — deep farm green with a warm egg-yolk gold accent.
+// Every text/background pair below meets WCAG AA (4.5:1) or better.
 
-// Farm Ledger Dark Palette (Deep slate-navy ledger, Warm cream ink, Bright ledger-blue accent)
-val LedgerPaperDark = Color(0xFF0E1621)
-val LedgerCardSurfaceDark = Color(0xFF162231)
-val LedgerCardVariantDark = Color(0xFF203044)
-val LedgerInkDark = Color(0xFFF3EFE6)
-val LedgerInkSecondaryDark = Color(0xFFB8C4D4)
-val LedgerBlueDark = Color(0xFF8AB4F8)
-val LedgerBlueContainerDark = Color(0xFF1D3B63)
-val OnLedgerBlueContainerDark = Color(0xFFDCE7F7)
-val LedgerRuleOutlineDark = Color(0xFF38495E)
+// Light
+val FarmGreenLight = Color(0xFF136F4A)           // Primary (6.3:1 on white)
+val FarmGreenContainerLight = Color(0xFFD3F0E1)
+val OnFarmGreenContainerLight = Color(0xFF00210F)
+val YolkGoldTextLight = Color(0xFF7A5200)        // Secondary for text/icons (6.6:1 on white)
+val YolkGoldContainerLight = Color(0xFFFFE6A8)
+val OnYolkGoldContainerLight = Color(0xFF261900)
+val FieldBackgroundLight = Color(0xFFF5F7F2)
+val CardSurfaceLight = Color(0xFFFFFFFF)
+val CardVariantLight = Color(0xFFEBEFE7)
+val InkLight = Color(0xFF14201A)                 // 15.9:1 on white
+val InkSecondaryLight = Color(0xFF46544C)        // 7.8:1 on white
+val OutlineLight = Color(0xFFC3CBC2)
 
-// Egg-yolk brand logo colors (used only for the small egg-yolk logo in top bar / empty state)
-val EggYolkAmber = Color(0xFFE89B25)
-val EggYolkHighlight = Color(0xFFFFD166)
-val EggShellCream = Color(0xFFFAF7F0)
+// Dark
+val FarmGreenDark = Color(0xFF6EDBA5)
+val OnFarmGreenDark = Color(0xFF003822)
+val FarmGreenContainerDark = Color(0xFF0F5236)
+val OnFarmGreenContainerDark = Color(0xFFC9F5DD)
+val YolkGoldTextDark = Color(0xFFF5C04A)
+val YolkGoldContainerDark = Color(0xFF5A3E00)
+val OnYolkGoldContainerDark = Color(0xFFFFE6A8)
+val FieldBackgroundDark = Color(0xFF0C1310)
+val CardSurfaceDark = Color(0xFF151E19)
+val CardVariantDark = Color(0xFF1F2A24)
+val InkDark = Color(0xFFE7EEE9)
+val InkSecondaryDark = Color(0xFFB3C1B9)
+val OutlineDark = Color(0xFF3A4840)
+
+// Brand accents (logo, hero highlights)
+val EggYolkAmber = Color(0xFFF2A900)
+val EggYolkHighlight = Color(0xFFFFD970)
+val EggShellCream = Color(0xFFFFF8EC)
+val BrandDeepGreen = Color(0xFF0B4D33)
+val OnBrandDeepGreen = Color(0xFFFFFFFF)
+val OnBrandDeepGreenMuted = Color(0xFFCDE8DA)    // 9.4:1 on BrandDeepGreen
 
 // Status Colors (Green / Amber / Orange / Red — strictly reserved for status & warnings)
 val StatusGreenTextLight = Color(0xFF145A32)
@@ -62,3 +75,9 @@ val StatusOrangeBorderDark = Color(0xFFFB923C)
 val StatusRedTextDark = Color(0xFFFCA5A5)
 val StatusRedBgDark = Color(0xFF3F1111)
 val StatusRedBorderDark = Color(0xFFF87171)
+
+// Chart series (distinct from status colours, colour-blind safe pairings)
+val ChartLineLight = Color(0xFF136F4A)
+val ChartLineDark = Color(0xFF6EDBA5)
+val ChartAccentLight = Color(0xFFB7791F)
+val ChartAccentDark = Color(0xFFF5C04A)

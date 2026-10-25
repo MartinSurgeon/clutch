@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -23,17 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.TrendingUp
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.PriorityHigh
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -62,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -79,8 +70,8 @@ import com.example.domain.LayerCalc
 import com.example.ui.theme.EggShellCream
 import com.example.ui.theme.EggYolkAmber
 import com.example.ui.theme.EggYolkHighlight
-import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.LedgerBlueLight
+import com.example.ui.theme.BrandDeepGreen
+import com.example.ui.theme.ClutchIcons
 import com.example.ui.theme.StatusAmberBgDark
 import com.example.ui.theme.StatusAmberBgLight
 import com.example.ui.theme.StatusAmberBorderDark
@@ -137,7 +128,7 @@ fun EggYolkLogo(
 
         // Deep ledger-blue rounded badge
         drawCircle(
-            color = LedgerBlueLight,
+            color = BrandDeepGreen,
             radius = w * 0.48f,
             center = Offset(w * 0.5f, h * 0.5f)
         )
@@ -308,42 +299,42 @@ fun rememberStatusVisuals(state: LayerCalc.TargetState): StatusVisuals {
             backgroundColor = if (dark) StatusGreenBgDark else StatusGreenBgLight,
             borderColor = if (dark) StatusGreenBorderDark else StatusGreenBorderLight,
             textColor = if (dark) StatusGreenTextDark else StatusGreenTextLight,
-            icon = Icons.Default.CheckCircle,
+            icon = ClutchIcons.Good,
             label = state.label
         )
         LayerCalc.TargetState.WATCH -> StatusVisuals(
             backgroundColor = if (dark) StatusAmberBgDark else StatusAmberBgLight,
             borderColor = if (dark) StatusAmberBorderDark else StatusAmberBorderLight,
             textColor = if (dark) StatusAmberTextDark else StatusAmberTextLight,
-            icon = Icons.Default.Warning,
+            icon = ClutchIcons.Warning,
             label = state.label
         )
         LayerCalc.TargetState.OFF_TARGET -> StatusVisuals(
             backgroundColor = if (dark) StatusRedBgDark else StatusRedBgLight,
             borderColor = if (dark) StatusRedBorderDark else StatusRedBorderLight,
             textColor = if (dark) StatusRedTextDark else StatusRedTextLight,
-            icon = Icons.Default.Error,
+            icon = ClutchIcons.Critical,
             label = state.label
         )
         LayerCalc.TargetState.CLIMBING_TO_PEAK -> StatusVisuals(
             backgroundColor = MaterialTheme.colorScheme.primaryContainer,
             borderColor = MaterialTheme.colorScheme.primary,
             textColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            icon = Icons.AutoMirrored.Outlined.TrendingUp,
+            icon = ClutchIcons.TrendUp,
             label = state.label
         )
         LayerCalc.TargetState.PAST_PEAK_WINDOW -> StatusVisuals(
             backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
             borderColor = MaterialTheme.colorScheme.outline,
             textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            icon = Icons.Default.Schedule,
+            icon = ClutchIcons.Waiting,
             label = state.label
         )
         LayerCalc.TargetState.NOT_APPLICABLE -> StatusVisuals(
             backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
             borderColor = MaterialTheme.colorScheme.outlineVariant,
             textColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            icon = Icons.Outlined.Info,
+            icon = ClutchIcons.Info,
             label = state.label
         )
     }
@@ -770,7 +761,7 @@ fun NumberStepper(
                 .size(48.dp)
                 .testTag("${testTag}_minus")
         ) {
-            Icon(imageVector = Icons.Default.Remove, contentDescription = "Reduce $label")
+            Icon(imageVector = ClutchIcons.Remove, contentDescription = "Reduce $label", modifier = Modifier.size(16.dp))
         }
         OutlinedTextField(
             value = value,
@@ -794,7 +785,7 @@ fun NumberStepper(
                 .size(48.dp)
                 .testTag("${testTag}_plus")
         ) {
-            Icon(imageVector = Icons.Default.Add, contentDescription = "Add one to $label")
+            Icon(imageVector = ClutchIcons.Add, contentDescription = "Add one to $label", modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -862,7 +853,7 @@ fun MetricRowItem(
             color = MaterialTheme.colorScheme.onSurface
         )
         Icon(
-            imageVector = Icons.Outlined.ChevronRight,
+            imageVector = ClutchIcons.ChevronRight,
             contentDescription = "What ${item.title} means",
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
@@ -899,7 +890,7 @@ fun WarningsSectionCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = ClutchIcons.Good,
                     contentDescription = null,
                     tint = fg,
                     modifier = Modifier.size(28.dp)
@@ -961,19 +952,19 @@ fun WarningItemBlock(
             bgColor = if (dark) StatusRedBgDark else StatusRedBgLight
             borderColor = if (dark) StatusRedBorderDark else StatusRedBorderLight
             textColor = if (dark) StatusRedTextDark else StatusRedTextLight
-            iconVec = Icons.Default.Error
+            iconVec = ClutchIcons.Critical
         }
         LayerCalc.WarningSeverity.SERIOUS -> {
             bgColor = if (dark) StatusOrangeBgDark else StatusOrangeBgLight
             borderColor = if (dark) StatusOrangeBorderDark else StatusOrangeBorderLight
             textColor = if (dark) StatusOrangeTextDark else StatusOrangeTextLight
-            iconVec = Icons.Default.PriorityHigh
+            iconVec = ClutchIcons.Warning
         }
         LayerCalc.WarningSeverity.WARNING -> {
             bgColor = if (dark) StatusAmberBgDark else StatusAmberBgLight
             borderColor = if (dark) StatusAmberBorderDark else StatusAmberBorderLight
             textColor = if (dark) StatusAmberTextDark else StatusAmberTextLight
-            iconVec = Icons.Default.Warning
+            iconVec = ClutchIcons.Warning
         }
     }
 
@@ -1098,9 +1089,8 @@ fun MetricExplanationBottomSheet(
                     )
                     Text(
                         text = explanation.working,
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = JetBrainsMonoFontFamily
-                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -1160,7 +1150,7 @@ fun ExampleDataBanner(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Outlined.Info,
+                imageVector = ClutchIcons.Info,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.size(18.dp)
@@ -1186,5 +1176,173 @@ fun ExampleDataBanner(
                 )
             }
         }
+    }
+}
+
+/**
+ * Page title used at the top of every tab, so each screen opens the same way (Jakob's Law).
+ */
+@Composable
+fun ScreenTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.semantics { heading() }
+        )
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * Deep-green brand card for the single most important number on a screen.
+ */
+@Composable
+fun BrandHeroCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(ClutchDimens.CardRadius + 4.dp)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(listOf(BrandDeepGreen, BrandMidGreen))
+            )
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+private val BrandMidGreen = Color(0xFF136F4A)
+
+/**
+ * Gold information note for guidance and caveats (e.g. "targets are indicative").
+ */
+@Composable
+fun InfoNote(
+    text: String,
+    modifier: Modifier = Modifier,
+    title: String? = null,
+    icon: ImageVector = ClutchIcons.Info
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(ClutchDimens.CardRadius),
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .size(16.dp)
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (title != null) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Folding section header (Tesler's Law): shows a title and one-line summary, expands on tap.
+ */
+@Composable
+fun ExpandableHeader(
+    title: String,
+    subtitle: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onToggle)
+            .heightIn(min = 56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.semantics { heading() }
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Icon(
+            imageVector = if (expanded) ClutchIcons.ChevronUp else ClutchIcons.ChevronDown,
+            contentDescription = if (expanded) "Hide $title" else "Show $title",
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+/**
+ * "Saved on this phone" reassurance line used at the end of screens (peak-end rule).
+ */
+@Composable
+fun OfflineReassurance(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = ClutchIcons.Offline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "Saved on this phone. Works without data.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

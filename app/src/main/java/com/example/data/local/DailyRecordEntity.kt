@@ -24,6 +24,8 @@ data class DailyRecordEntity(
     val waterL: Double = 0.0,
     val avgEggWeightG: Double? = null,
     val maxTempC: Double? = null,
+    val bodyWeightG: Double? = null, // average of a sample weigh-in, usually every 1-2 weeks
+    val uniformityPct: Double? = null, // % of weighed birds within ±10% of the average
     val notes: String = "",
     val enteredBy: String = "local_farmer",
     val enteredByName: String = "Farmer",

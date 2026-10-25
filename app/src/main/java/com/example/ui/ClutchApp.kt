@@ -3,11 +3,11 @@ package com.example.ui
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,21 +15,8 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ShowChart
-import androidx.compose.material.icons.automirrored.outlined.ShowChart
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Layers
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
@@ -69,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -76,16 +65,24 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.components.EggYolkLogo
 import com.example.ui.components.ExampleDataBanner
 import com.example.ui.components.LoadingState
+import com.example.ui.screens.DailyScreen
+import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.FlocksScreen
+import com.example.ui.screens.GuideScreen
 import com.example.ui.screens.RecordScreen
-import com.example.ui.screens.TodayScreen
-import com.example.ui.screens.TrendsScreen
+import com.example.ui.screens.WeeklyScreen
+import com.example.ui.theme.ClutchIcons
 import java.io.File
 
-const val ROUTE_TODAY = "today"
+// Tabs
+const val ROUTE_DASHBOARD = "dashboard"
+const val ROUTE_DAILY = "daily"
+const val ROUTE_WEEKLY = "weekly"
+const val ROUTE_GUIDE = "guide"
+
+// Sub-screens (opened on top of a tab, with a back arrow)
 const val ROUTE_RECORD = "record"
-const val ROUTE_TRENDS = "trends"
-const val ROUTE_FLOCKS = "flocks"
+const val ROUTE_PENS = "pens"
 
 /** Screens wider than this get a side rail instead of a bottom bar (tablets, foldables, landscape). */
 private const val WIDE_LAYOUT_MIN_DP = 600
@@ -93,14 +90,15 @@ private const val WIDE_LAYOUT_MIN_DP = 600
 enum class ClutchTab(
     val route: String,
     val label: String,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
+    val icon: ImageVector
 ) {
-    TODAY(ROUTE_TODAY, "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    RECORD(ROUTE_RECORD, "Record", Icons.Filled.EditNote, Icons.Outlined.EditNote),
-    TRENDS(ROUTE_TRENDS, "Reports", Icons.AutoMirrored.Filled.ShowChart, Icons.AutoMirrored.Outlined.ShowChart),
-    FLOCKS(ROUTE_FLOCKS, "Pens", Icons.Filled.Layers, Icons.Outlined.Layers)
+    DASHBOARD(ROUTE_DASHBOARD, "Dashboard", ClutchIcons.Dashboard),
+    DAILY(ROUTE_DAILY, "Daily", ClutchIcons.Daily),
+    WEEKLY(ROUTE_WEEKLY, "Weekly", ClutchIcons.Weekly),
+    GUIDE(ROUTE_GUIDE, "Guide", ClutchIcons.Guide)
 }
+
+private fun isTabRoute(route: String) = ClutchTab.entries.any { it.route == route }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -110,14 +108,15 @@ fun ClutchApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route ?: ROUTE_TODAY
+    val currentRoute = navBackStackEntry?.destination?.route ?: ROUTE_DASHBOARD
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val isWide = LocalConfiguration.current.screenWidthDp >= WIDE_LAYOUT_MIN_DP
-    // Hide the bottom bar while typing so the Record screen's Save bar sits right above the keyboard
-    val showBottomBar = !isWide && !WindowInsets.isImeVisible
+    val onTab = isTabRoute(currentRoute)
+    // Sub-screens are focused tasks: no tab bar. While typing, hide it so the Save bar sits above the keyboard.
+    val showBottomBar = !isWide && onTab && !WindowInsets.isImeVisible
 
-    var openAddFlockOnFlocksScreen by rememberSaveable { mutableStateOf(false) }
+    var openAddPenSheet by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.snackbarEvents.collect { msg ->
@@ -135,8 +134,23 @@ fun ClutchApp(
         }
     }
 
+    fun openRecord(date: String) {
+        viewModel.selectRecordDate(date)
+        navController.navigate(ROUTE_RECORD) { launchSingleTop = true }
+    }
+
+    fun openPens(addNew: Boolean = false) {
+        openAddPenSheet = addNew
+        navController.navigate(ROUTE_PENS) { launchSingleTop = true }
+    }
+
+    fun goBack() {
+        if (!navController.popBackStack()) navigateToTab(ROUTE_DASHBOARD)
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -148,8 +162,9 @@ fun ClutchApp(
                 ClutchTopBar(
                     uiState = uiState,
                     currentRoute = currentRoute,
+                    onBack = ::goBack,
                     onSelectFlock = { viewModel.selectFlock(it) },
-                    onManagePens = { navigateToTab(ROUTE_FLOCKS) },
+                    onManagePens = { openPens() },
                     onShareRecords = {
                         viewModel.exportCsv { csvContent ->
                             shareCsvViaIntent(context, csvContent)
@@ -168,7 +183,7 @@ fun ClutchApp(
             if (showBottomBar) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp
+                    tonalElevation = 0.dp
                 ) {
                     ClutchTab.entries.forEach { tab ->
                         val selected = currentRoute == tab.route
@@ -177,8 +192,9 @@ fun ClutchApp(
                             onClick = { navigateToTab(tab.route) },
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                    contentDescription = null
+                                    imageVector = tab.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             },
                             label = {
@@ -187,6 +203,10 @@ fun ClutchApp(
                                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 )
                             },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
                             modifier = Modifier.testTag("nav_tab_${tab.route}")
                         )
                     }
@@ -211,8 +231,9 @@ fun ClutchApp(
                             onClick = { navigateToTab(tab.route) },
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                    contentDescription = null
+                                    imageVector = tab.icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             },
                             label = { Text(tab.label) },
@@ -231,9 +252,12 @@ fun ClutchApp(
                         uiState = uiState,
                         viewModel = viewModel,
                         navController = navController,
-                        navigateToTab = ::navigateToTab,
-                        openAddFlockOnFlocksScreen = openAddFlockOnFlocksScreen,
-                        onOpenAddFlock = { openAddFlockOnFlocksScreen = it }
+                        onOpenRecord = ::openRecord,
+                        onOpenPens = ::openPens,
+                        onBack = ::goBack,
+                        onSelectWindow = { viewModel.setTrendWindow(it) },
+                        openAddPenSheet = openAddPenSheet,
+                        onAddPenSheetConsumed = { openAddPenSheet = false }
                     )
                 }
             }
@@ -245,33 +269,54 @@ fun ClutchApp(
 private fun ClutchNavHost(
     uiState: ClutchUiState,
     viewModel: ClutchViewModel,
-    navController: androidx.navigation.NavHostController,
-    navigateToTab: (String) -> Unit,
-    openAddFlockOnFlocksScreen: Boolean,
-    onOpenAddFlock: (Boolean) -> Unit
+    navController: NavHostController,
+    onOpenRecord: (String) -> Unit,
+    onOpenPens: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onSelectWindow: (TrendWindow) -> Unit,
+    openAddPenSheet: Boolean,
+    onAddPenSheetConsumed: () -> Unit
 ) {
     NavHost(
         navController = navController,
-        startDestination = ROUTE_TODAY,
+        startDestination = ROUTE_DASHBOARD,
         modifier = Modifier.fillMaxSize()
     ) {
-        composable(ROUTE_TODAY) {
-            TodayScreen(
+        composable(ROUTE_DASHBOARD) {
+            DashboardScreen(
                 uiState = uiState,
-                onAddFirstFlock = {
-                    onOpenAddFlock(true)
-                    navigateToTab(ROUTE_FLOCKS)
+                onAddFirstFlock = { onOpenPens(true) },
+                onTryExampleData = { viewModel.loadExampleData() },
+                onRecordToday = { onOpenRecord(uiState.todayDate) },
+                onSelectWindow = onSelectWindow
+            )
+        }
+
+        composable(ROUTE_DAILY) {
+            DailyScreen(
+                uiState = uiState,
+                onRecordDay = onOpenRecord,
+                onAddFirstFlock = { onOpenPens(true) }
+            )
+        }
+
+        composable(ROUTE_WEEKLY) {
+            WeeklyScreen(
+                uiState = uiState,
+                onSaveNote = { ageWeek, notes, actions ->
+                    uiState.activeDashboard?.flock?.let { flock ->
+                        viewModel.saveWeeklyNote(flock, ageWeek, notes, actions)
+                    }
                 },
-                onTryExampleData = {
-                    viewModel.loadExampleData()
-                },
-                onRecordToday = {
-                    viewModel.selectRecordDate(uiState.todayDate)
-                    navigateToTab(ROUTE_RECORD)
-                },
-                onOpenReports = {
-                    navigateToTab(ROUTE_TRENDS)
-                }
+                onRecordToday = { onOpenRecord(uiState.todayDate) }
+            )
+        }
+
+        composable(ROUTE_GUIDE) {
+            GuideScreen(
+                uiState = uiState,
+                onSaveFlockSize = { flock, size -> viewModel.updateFlockSize(flock, size) },
+                onManagePens = { onOpenPens(false) }
             )
         }
 
@@ -281,7 +326,7 @@ private fun ClutchNavHost(
                 onDateChange = { newDate ->
                     viewModel.selectRecordDate(newDate)
                 },
-                onSaveRecord = { flock, date, liveHens, deaths, culls, eggs, cracked, dirty, softShell, feedKg, waterL, avgEggWeightG, maxTempC, notes, onFailed ->
+                onSaveRecord = { flock, date, liveHens, deaths, culls, eggs, cracked, dirty, softShell, feedKg, waterL, avgEggWeightG, maxTempC, bodyWeightG, uniformityPct, notes, onFailed ->
                     viewModel.saveDailyRecord(
                         flock = flock,
                         date = date,
@@ -296,10 +341,10 @@ private fun ClutchNavHost(
                         waterL = waterL,
                         avgEggWeightG = avgEggWeightG,
                         maxTempC = maxTempC,
+                        bodyWeightG = bodyWeightG,
+                        uniformityPct = uniformityPct,
                         notes = notes,
-                        onSaved = {
-                            navigateToTab(ROUTE_TODAY)
-                        },
+                        onSaved = onBack,
                         onFailed = onFailed
                     )
                 },
@@ -307,43 +352,21 @@ private fun ClutchNavHost(
                     viewModel.deleteDailyRecord(
                         flock = flock,
                         date = date,
-                        onDeleted = {
-                            navigateToTab(ROUTE_TODAY)
-                        }
+                        onDeleted = onBack
                     )
                 },
-                onAddFirstFlock = {
-                    onOpenAddFlock(true)
-                    navigateToTab(ROUTE_FLOCKS)
-                }
+                onAddFirstFlock = { onOpenPens(true) }
             )
         }
 
-        composable(ROUTE_TRENDS) {
-            TrendsScreen(
-                uiState = uiState,
-                onSelectWindow = { window ->
-                    viewModel.setTrendWindow(window)
-                },
-                onTapDayToEdit = { date ->
-                    viewModel.selectRecordDate(date)
-                    navigateToTab(ROUTE_RECORD)
-                },
-                onNavigateToRecord = {
-                    viewModel.selectRecordDate(uiState.todayDate)
-                    navigateToTab(ROUTE_RECORD)
-                }
-            )
-        }
-
-        composable(ROUTE_FLOCKS) {
+        composable(ROUTE_PENS) {
             FlocksScreen(
                 uiState = uiState,
-                showAddSheetInitial = openAddFlockOnFlocksScreen,
-                onAddSheetConsumed = { onOpenAddFlock(false) },
+                showAddSheetInitial = openAddPenSheet,
+                onAddSheetConsumed = onAddPenSheetConsumed,
                 onOpenFlock = { flockId ->
                     viewModel.selectFlock(flockId)
-                    navigateToTab(ROUTE_TODAY)
+                    onBack()
                 },
                 onSaveFlock = { existingId, name, breed, hensHoused, ageWeeks, placedDate ->
                     viewModel.saveFlock(
@@ -353,9 +376,7 @@ private fun ClutchNavHost(
                         hensHoused = hensHoused,
                         ageWeeksAtPlacement = ageWeeks,
                         placedDate = placedDate,
-                        onSaved = {
-                            navigateToTab(ROUTE_TODAY)
-                        }
+                        onSaved = { if (existingId == null) onBack() }
                     )
                 },
                 onArchiveFlock = { flock, archive ->
@@ -370,14 +391,15 @@ private fun ClutchNavHost(
 }
 
 /**
- * Top bar: on Home, Record and Reports the title is a pen switcher (familiar "account switcher"
- * pattern), so changing pens never needs a trip to another tab. On Pens it is a plain title.
+ * Top bar. On tabs the title is a pen switcher (familiar "account switcher" pattern), so changing
+ * pens never needs a trip elsewhere. On sub-screens it shows a back arrow and the screen name.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ClutchTopBar(
     uiState: ClutchUiState,
     currentRoute: String,
+    onBack: () -> Unit,
     onSelectFlock: (String) -> Unit,
     onManagePens: () -> Unit,
     onShareRecords: () -> Unit
@@ -385,7 +407,7 @@ private fun ClutchTopBar(
     var switcherExpanded by remember { mutableStateOf(false) }
     var overflowExpanded by remember { mutableStateOf(false) }
     val activeFlock = uiState.activeDashboard?.flock
-    val showSwitcher = currentRoute != ROUTE_FLOCKS && activeFlock != null
+    val onTab = isTabRoute(currentRoute)
 
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
@@ -393,14 +415,29 @@ private fun ClutchTopBar(
             titleContentColor = MaterialTheme.colorScheme.onSurface
         ),
         navigationIcon = {
-            EggYolkLogo(
-                size = 32.dp,
-                modifier = Modifier.padding(start = 16.dp, end = 4.dp)
-            )
+            if (onTab) {
+                EggYolkLogo(
+                    size = 32.dp,
+                    modifier = Modifier.padding(start = 16.dp, end = 4.dp)
+                )
+            } else {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("top_back_button")) {
+                    Icon(
+                        imageVector = ClutchIcons.Back,
+                        contentDescription = "Back",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         },
         title = {
-            if (showSwitcher) {
-                Box {
+            when {
+                currentRoute == ROUTE_RECORD -> TopTitle(
+                    title = "Record a day",
+                    subtitle = activeFlock?.name
+                )
+                currentRoute == ROUTE_PENS -> TopTitle(title = "Your pens")
+                activeFlock != null -> Box {
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
@@ -409,11 +446,10 @@ private fun ClutchTopBar(
                             .testTag("pen_switcher"),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = activeFlock.name,
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -425,9 +461,11 @@ private fun ClutchTopBar(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Change pen"
+                            imageVector = ClutchIcons.Dropdown,
+                            contentDescription = "Change pen",
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                     DropdownMenu(
@@ -445,9 +483,9 @@ private fun ClutchTopBar(
                                 },
                                 leadingIcon = {
                                     if (isCurrent) {
-                                        Icon(Icons.Default.Check, contentDescription = "Current pen")
+                                        Icon(ClutchIcons.Check, contentDescription = "Current pen", modifier = Modifier.size(16.dp))
                                     } else {
-                                        Box(modifier = Modifier.size(24.dp))
+                                        Box(modifier = Modifier.size(16.dp))
                                     }
                                 },
                                 onClick = {
@@ -460,32 +498,29 @@ private fun ClutchTopBar(
                         HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("Manage pens") },
-                            leadingIcon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                            leadingIcon = { Icon(ClutchIcons.Settings, contentDescription = null, modifier = Modifier.size(16.dp)) },
                             onClick = {
                                 switcherExpanded = false
                                 onManagePens()
-                            }
+                            },
+                            modifier = Modifier.testTag("manage_pens_item")
                         )
                     }
                 }
-            } else {
-                Text(
-                    text = if (currentRoute == ROUTE_FLOCKS) "Your pens" else "Clutch",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
+                else -> TopTitle(title = "Clutch")
             }
         },
         actions = {
-            if (uiState.flocks.isNotEmpty()) {
+            if (onTab && uiState.flocks.isNotEmpty()) {
                 Box {
                     IconButton(
                         onClick = { overflowExpanded = true },
                         modifier = Modifier.testTag("top_overflow_menu_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options"
+                            imageVector = ClutchIcons.More,
+                            contentDescription = "More options",
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     DropdownMenu(
@@ -493,13 +528,16 @@ private fun ClutchTopBar(
                         onDismissRequest = { overflowExpanded = false }
                     ) {
                         DropdownMenuItem(
+                            text = { Text("Manage pens") },
+                            leadingIcon = { Icon(ClutchIcons.Pens, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                overflowExpanded = false
+                                onManagePens()
+                            }
+                        )
+                        DropdownMenuItem(
                             text = { Text("Share records") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Share,
-                                    contentDescription = null
-                                )
-                            },
+                            leadingIcon = { Icon(ClutchIcons.Share, contentDescription = null, modifier = Modifier.size(16.dp)) },
                             onClick = {
                                 overflowExpanded = false
                                 onShareRecords()
@@ -511,6 +549,21 @@ private fun ClutchTopBar(
             }
         }
     )
+}
+
+@Composable
+private fun TopTitle(title: String, subtitle: String? = null) {
+    Column {
+        Text(text = title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
 }
 
 private fun shareCsvViaIntent(context: Context, csvContent: String) {

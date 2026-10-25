@@ -22,19 +22,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Unarchive
-import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -81,6 +68,7 @@ import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.IconBadge
 import com.example.ui.components.LedgerTextField
 import com.example.ui.components.StatusChip
+import com.example.ui.theme.ClutchIcons
 
 /** Common layer breeds in Ghana, kept to 7 so the choice stays quick (Miller's Law). */
 val BREED_SUGGESTIONS = listOf(
@@ -152,11 +140,11 @@ fun FlocksScreen(
             if (uiState.flocks.isEmpty()) {
                 item {
                     EmptyStateCard(
-                        icon = Icons.Outlined.Layers,
+                        icon = ClutchIcons.Pens,
                         title = "No pens yet",
                         body = "A pen is one group of birds you keep together, like \"Pen A\" or \"Layer House 1\". Add your first one to start.",
                         primaryLabel = "Add a pen",
-                        primaryIcon = Icons.Default.Add,
+                        primaryIcon = ClutchIcons.Add,
                         onPrimary = ::openAddSheet,
                         primaryTestTag = "add_flock_empty_button"
                     )
@@ -211,7 +199,7 @@ fun FlocksScreen(
                                 )
                             }
                             Icon(
-                                imageVector = if (showOldPens) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                imageVector = if (showOldPens) ClutchIcons.ChevronUp else ClutchIcons.ChevronDown,
                                 contentDescription = if (showOldPens) "Hide old pens" else "Show old pens",
                                 tint = MaterialTheme.colorScheme.primary
                             )
@@ -239,7 +227,7 @@ fun FlocksScreen(
         if (uiState.flocks.isNotEmpty()) {
             ExtendedFloatingActionButton(
                 onClick = ::openAddSheet,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                icon = { Icon(ClutchIcons.Add, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 text = { Text("Add a pen", fontWeight = FontWeight.Bold) },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
@@ -264,7 +252,7 @@ fun FlocksScreen(
     flockToDelete?.let { flock ->
         AlertDialog(
             onDismissRequest = { flockToDelete = null },
-            icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null) },
+            icon = { Icon(ClutchIcons.Delete, contentDescription = null, modifier = Modifier.size(22.dp)) },
             title = { Text("Remove ${flock.name}?") },
             text = { Text("This pen has no records yet, so nothing else will be lost. You can't undo this.") },
             confirmButton = {
@@ -307,7 +295,7 @@ private fun PenCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBadge(icon = Icons.Outlined.Layers)
+            IconBadge(icon = ClutchIcons.Pens)
             Column(modifier = Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -338,8 +326,9 @@ private fun PenCard(
                     modifier = Modifier.testTag("flock_overflow_${flock.id}")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More options for ${flock.name}"
+                        imageVector = ClutchIcons.More,
+                        contentDescription = "More options for ${flock.name}",
+                        modifier = Modifier.size(18.dp)
                     )
                 }
                 DropdownMenu(
@@ -348,7 +337,7 @@ private fun PenCard(
                 ) {
                     DropdownMenuItem(
                         text = { Text("Edit pen") },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        leadingIcon = { Icon(ClutchIcons.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) },
                         onClick = {
                             menuExpanded = false
                             onEdit()
@@ -359,8 +348,9 @@ private fun PenCard(
                         text = { Text(if (flock.archived) "Bring back" else "Move to old pens") },
                         leadingIcon = {
                             Icon(
-                                if (flock.archived) Icons.Default.Unarchive else Icons.Default.Archive,
-                                contentDescription = null
+                                if (flock.archived) ClutchIcons.Restore else ClutchIcons.Archive,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
                             )
                         },
                         onClick = {
@@ -375,8 +365,9 @@ private fun PenCard(
                             text = { Text("Remove pen", color = MaterialTheme.colorScheme.error) },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.DeleteOutline,
+                                    ClutchIcons.Delete,
                                     contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.error
                                 )
                             },
@@ -406,8 +397,9 @@ private fun PenCard(
                 modifier = Modifier.weight(1f)
             )
             Icon(
-                imageVector = Icons.Outlined.ChevronRight,
+                imageVector = ClutchIcons.ChevronRight,
                 contentDescription = null,
+                modifier = Modifier.size(12.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -439,7 +431,7 @@ private fun PenBadge(text: String, highlighted: Boolean) {
         ) {
             if (highlighted) {
                 Icon(
-                    imageVector = Icons.Default.Check,
+                    imageVector = ClutchIcons.Check,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.size(12.dp)
@@ -622,14 +614,14 @@ fun FlockFormBottomSheet(
                     .heightIn(min = 56.dp)
                     .testTag("input_placed_date_button")
             ) {
-                Icon(Icons.Default.CalendarMonth, contentDescription = null)
+                Icon(ClutchIcons.Calendar, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Date stocked: ${LayerCalc.friendlyDate(placedDateText, withYear = true)}")
             }
 
             ClutchPrimaryButton(
                 text = if (initialFlock == null) "Save pen" else "Save changes",
-                icon = Icons.Default.Check,
+                icon = ClutchIcons.Check,
                 onClick = {
                     saveAttempted = true
                     if (nameError != null || breedError != null || hensError != null || ageError != null) {

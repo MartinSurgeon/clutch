@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.DailyRecordEntity
 import com.example.data.local.FlockEntity
+import com.example.data.local.WeeklyNoteEntity
 import com.example.data.repository.ClutchRepository
 import com.example.domain.LayerCalc
+import com.example.domain.WeeklyCalc
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -52,7 +54,10 @@ data class ActiveFlockDashboard(
     val warnings: List<LayerCalc.WarningItem>,
     val last7Days: LayerCalc.Last7DaysSummary,
     val weeklyMortality: List<LayerCalc.WeeklyMortalityPoint>,
-    val totalEggsToDate: Int
+    val totalEggsToDate: Int,
+    val weeklySummaries: List<WeeklyCalc.WeekSummary>,
+    val weeklyNotes: Map<Int, WeeklyNoteEntity>,
+    val latestWeighIn: DailyRecordEntity?
 )
 
 data class ClutchUiState(
@@ -91,11 +96,12 @@ class ClutchViewModel(
     val uiState: StateFlow<ClutchUiState> = combine(
         repository.allFlocks,
         repository.allActiveRecords,
+        repository.allWeeklyNotes,
         _selectedFlockId,
-        _selectedRecordDate,
-        _trendWindow
-    ) { flocks, allRecords, selFlockId, recDate, window ->
+        combine(_selectedRecordDate, _trendWindow) { date, window -> date to window }
+    ) { flocks, allRecords, allNotes, selFlockId, (recDate, window) ->
         val recordsByFlock = allRecords.groupBy { it.flockId }
+        val notesByFlock = allNotes.groupBy { it.flockId }
         val hasExample = flocks.any { it.isExample }
 
         val flockCards = flocks.map { flock ->
@@ -157,7 +163,9 @@ class ClutchViewModel(
                     waterL = it.waterL,
                     avgEggWeightG = it.avgEggWeightG,
                     maxTempC = it.maxTempC,
-                    notes = it.notes
+                    notes = it.notes,
+                    bodyWeightG = it.bodyWeightG,
+                    uniformityPct = it.uniformityPct
                 )
             }
             val recordsWithMetrics = rawRecords.mapIndexed { idx, entity ->
@@ -202,7 +210,10 @@ class ClutchViewModel(
                 warnings = warnings,
                 last7Days = last7,
                 weeklyMortality = weeklyMort,
-                totalEggsToDate = totalEggs
+                totalEggsToDate = totalEggs,
+                weeklySummaries = WeeklyCalc.summarizeWeeks(fInput, inputs),
+                weeklyNotes = (notesByFlock[flock.id] ?: emptyList()).associateBy { it.ageWeek },
+                latestWeighIn = rawRecords.lastOrNull { it.bodyWeightG != null || it.uniformityPct != null }
             )
         }
 
@@ -291,6 +302,39 @@ class ClutchViewModel(
         }
     }
 
+    /** Change only the starting flock size (birds stocked), keeping everything else about the pen. */
+    fun updateFlockSize(flock: FlockEntity, hensHoused: Int) {
+        viewModelScope.launch {
+            runCatching { repository.saveFlock(flock.copy(hensHoused = hensHoused)) }
+                .onSuccess { _snackbarEvents.tryEmit("Starting flock size for ${flock.name} is now $hensHoused birds") }
+                .onFailure { _snackbarEvents.tryEmit("Sorry, the flock size was not saved. Please try again.") }
+        }
+    }
+
+    fun saveWeeklyNote(
+        flock: FlockEntity,
+        ageWeek: Int,
+        notes: String,
+        actions: String,
+        onSaved: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val note = WeeklyNoteEntity(
+                id = WeeklyNoteEntity.buildId(flock.id, ageWeek),
+                flockId = flock.id,
+                ageWeek = ageWeek,
+                notes = notes.trim(),
+                actions = actions.trim()
+            )
+            runCatching { repository.saveWeeklyNote(note) }
+                .onSuccess {
+                    _snackbarEvents.tryEmit("Notes for week $ageWeek saved")
+                    onSaved()
+                }
+                .onFailure { _snackbarEvents.tryEmit("Sorry, the notes were not saved. Please try again.") }
+        }
+    }
+
     fun archiveFlock(flock: FlockEntity, archive: Boolean) {
         viewModelScope.launch {
             repository.archiveFlock(flock.id, archive)
@@ -326,6 +370,8 @@ class ClutchViewModel(
         waterL: Double,
         avgEggWeightG: Double?,
         maxTempC: Double?,
+        bodyWeightG: Double?,
+        uniformityPct: Double?,
         notes: String,
         onSaved: () -> Unit,
         onFailed: () -> Unit = {}
@@ -346,6 +392,8 @@ class ClutchViewModel(
                 waterL = waterL,
                 avgEggWeightG = avgEggWeightG,
                 maxTempC = maxTempC,
+                bodyWeightG = bodyWeightG,
+                uniformityPct = uniformityPct,
                 notes = notes.trim()
             )
             runCatching { repository.saveDailyRecord(record) }

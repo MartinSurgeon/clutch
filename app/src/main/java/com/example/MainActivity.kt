@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Room
 import com.example.data.local.ClutchDatabase
+import com.example.data.local.MIGRATION_1_2
 import com.example.data.repository.RoomClutchRepository
 import com.example.ui.ClutchApp
 import com.example.ui.ClutchViewModel
@@ -20,7 +21,10 @@ class MainActivity : ComponentActivity() {
             applicationContext,
             ClutchDatabase::class.java,
             "clutch_ledger.db"
-        ).fallbackToDestructiveMigration(dropAllTables = true).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .build()
     }
 
     private val repository: RoomClutchRepository by lazy {

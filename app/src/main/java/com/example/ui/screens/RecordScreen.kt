@@ -18,20 +18,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.outlined.Egg
-import androidx.compose.material.icons.outlined.Grass
-import androidx.compose.material.icons.outlined.Layers
-import androidx.compose.material.icons.outlined.Pets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -78,6 +64,7 @@ import com.example.ui.components.LedgerTextField
 import com.example.ui.components.NumberStepper
 import com.example.ui.components.ScreenColumn
 import com.example.ui.components.StatusChip
+import com.example.ui.theme.ClutchIcons
 import kotlinx.coroutines.launch
 import kotlin.math.floor
 
@@ -102,6 +89,8 @@ fun RecordScreen(
         waterL: Double,
         avgEggWeightG: Double?,
         maxTempC: Double?,
+        bodyWeightG: Double?,
+        uniformityPct: Double?,
         notes: String,
         onFailed: () -> Unit
     ) -> Unit,
@@ -113,11 +102,11 @@ fun RecordScreen(
     if (dashboard == null) {
         ScreenColumn(modifier = modifier, testTag = "record_screen") {
             EmptyStateCard(
-                icon = Icons.Outlined.Layers,
+                icon = ClutchIcons.Pens,
                 title = "Add a pen first",
                 body = "Tell Clutch about your birds once. Then you can record eggs, feed and water every day.",
                 primaryLabel = "Add a pen",
-                primaryIcon = Icons.Default.Add,
+                primaryIcon = ClutchIcons.Add,
                 onPrimary = onAddFirstFlock,
                 primaryTestTag = "record_goto_flocks_button"
             )
@@ -166,6 +155,15 @@ fun RecordScreen(
     var maxTempText by rememberSaveable(formKey) {
         mutableStateOf(existingRecord?.maxTempC?.toString() ?: "")
     }
+    var bodyWeightText by rememberSaveable(formKey) {
+        mutableStateOf(existingRecord?.bodyWeightG?.let { LayerCalc.format0(it) } ?: "")
+    }
+    var uniformityText by rememberSaveable(formKey) {
+        mutableStateOf(existingRecord?.uniformityPct?.let { LayerCalc.format1(it) } ?: "")
+    }
+    var expandWeighIn by rememberSaveable(formKey) {
+        mutableStateOf(existingRecord?.bodyWeightG != null || existingRecord?.uniformityPct != null)
+    }
     var notesText by rememberSaveable(formKey) {
         mutableStateOf(existingRecord?.notes ?: "")
     }
@@ -196,6 +194,8 @@ fun RecordScreen(
             softShellText = existingRecord.softShell.toString()
             eggWeightText = existingRecord.avgEggWeightG?.toString() ?: ""
             maxTempText = existingRecord.maxTempC?.toString() ?: ""
+            bodyWeightText = existingRecord.bodyWeightG?.let { LayerCalc.format0(it) } ?: ""
+            uniformityText = existingRecord.uniformityPct?.let { LayerCalc.format1(it) } ?: ""
             notesText = existingRecord.notes
         }
     }
@@ -233,6 +233,8 @@ fun RecordScreen(
     val waterLVal = waterLText.trim().toDoubleOrNull() ?: 0.0
     val eggWeightVal = eggWeightText.trim().toDoubleOrNull()
     val maxTempVal = maxTempText.trim().toDoubleOrNull()
+    val bodyWeightVal = bodyWeightText.trim().toDoubleOrNull()
+    val uniformityVal = uniformityText.trim().toDoubleOrNull()
 
     // Validation rules, worded as what to do next
     val liveHensError: String? = when {
@@ -258,12 +260,23 @@ fun RecordScreen(
             "Bad eggs ($totalDefects) can't be more than all eggs picked ($eggsVal)."
         else -> null
     }
-    val allErrors = listOfNotNull(liveHensError, deathsCullsError, eggsError, defectsError)
+    val bodyWeightError: String? = when {
+        bodyWeightText.isBlank() -> null
+        bodyWeightVal == null || bodyWeightVal !in 300.0..5000.0 -> "Enter body weight in grams, e.g. 1950."
+        else -> null
+    }
+    val uniformityError: String? = when {
+        uniformityText.isBlank() -> null
+        uniformityVal == null || uniformityVal !in 0.0..100.0 -> "Uniformity must be between 0 and 100%."
+        else -> null
+    }
+    val allErrors = listOfNotNull(liveHensError, deathsCullsError, eggsError, defectsError, bodyWeightError, uniformityError)
 
     // Live preview calculations
     val previewEggs = eggsVal?.coerceAtLeast(0) ?: 0
     val previewHenDay = LayerCalc.henDayPercent(previewEggs, liveHensVal)
     val previewFeedG = LayerCalc.feedPerBirdGrams(feedKgVal, liveHensVal)
+    val previewHenHoused = LayerCalc.henHousedPercent(previewEggs, dashboard.flock.hensHoused)
     val previewStatus = remember(previewHenDay, selectedDate) {
         val age = LayerCalc.ageInWeeks(dashboard.flock.ageWeeksAtPlacement, dashboard.flock.placedDate, selectedDate)
         LayerCalc.evaluateHenDayTarget(previewHenDay, age)
@@ -308,7 +321,7 @@ fun RecordScreen(
 
                 // 1. Eggs — what the farmer counts first
                 FormSection(
-                    icon = Icons.Outlined.Egg,
+                    icon = ClutchIcons.Egg,
                     heading = "Eggs picked",
                     subtitle = "Count full crates, then the loose eggs left over"
                 ) {
@@ -373,7 +386,7 @@ fun RecordScreen(
 
                 // 2. Birds
                 FormSection(
-                    icon = Icons.Outlined.Pets,
+                    icon = ClutchIcons.Birds,
                     heading = "Birds",
                     subtitle = "We filled this in from your last count"
                 ) {
@@ -409,8 +422,8 @@ fun RecordScreen(
 
                 // 3. Feed and water
                 FormSection(
-                    icon = Icons.Outlined.Grass,
-                    heading = "Feed and water",
+                    icon = ClutchIcons.Feed,
+                    heading = "Feed, water and egg weight",
                     subtitle = "What you gave the birds today"
                 ) {
                     LedgerTextField(
@@ -433,10 +446,53 @@ fun RecordScreen(
                         keyboardType = KeyboardType.Decimal,
                         testTag = "input_water_l"
                     )
+                    LedgerTextField(
+                        value = eggWeightText,
+                        onValueChange = { eggWeightText = it },
+                        label = "Average egg weight",
+                        suffix = "g",
+                        helperText = "Weigh 30 eggs from one crate, divide by 30. Once a week is enough.",
+                        errorText = null,
+                        keyboardType = KeyboardType.Decimal,
+                        testTag = "input_egg_weight"
+                    )
                 }
 
-                // 4. Extra details, folded away (Tesler's Law)
+                // 4. Weigh-in: body weight and flock uniformity, every 1-2 weeks
                 ExtraDetailsSection(
+                    title = "Weigh-in (every 1–2 weeks)",
+                    subtitle = "Body weight and flock uniformity",
+                    toggleTag = "weigh_in_toggle",
+                    expanded = expandWeighIn,
+                    onToggle = { expandWeighIn = !expandWeighIn }
+                ) {
+                    LedgerTextField(
+                        value = bodyWeightText,
+                        onValueChange = { bodyWeightText = it },
+                        label = "Average body weight",
+                        suffix = "g",
+                        helperText = "Weigh 50–100 birds and take the average, e.g. 1950 g",
+                        errorText = if (saveAttempted) bodyWeightError else null,
+                        keyboardType = KeyboardType.Decimal,
+                        testTag = "input_body_weight"
+                    )
+                    LedgerTextField(
+                        value = uniformityText,
+                        onValueChange = { uniformityText = it },
+                        label = "Flock uniformity",
+                        suffix = "%",
+                        helperText = "Share of weighed birds within 10% of the average. Aim for 80% or more.",
+                        errorText = if (saveAttempted) uniformityError else null,
+                        keyboardType = KeyboardType.Decimal,
+                        testTag = "input_uniformity"
+                    )
+                }
+
+                // 5. Extra details, folded away (Tesler's Law)
+                ExtraDetailsSection(
+                    title = "Extra details (you can skip)",
+                    subtitle = "Soft-shell eggs, heat, notes",
+                    toggleTag = "more_details_toggle",
                     expanded = expandOptional,
                     onToggle = { expandOptional = !expandOptional }
                 ) {
@@ -447,16 +503,6 @@ fun RecordScreen(
                         onValueChange = { softShellText = it },
                         isError = saveAttempted && defectsError != null,
                         testTag = "input_soft_shell"
-                    )
-                    LedgerTextField(
-                        value = eggWeightText,
-                        onValueChange = { eggWeightText = it },
-                        label = "Average egg weight",
-                        suffix = "g",
-                        helperText = "Weigh 30 eggs, divide by 30. Once a week is enough.",
-                        errorText = null,
-                        keyboardType = KeyboardType.Decimal,
-                        testTag = "input_egg_weight"
                     )
                     LedgerTextField(
                         value = maxTempText,
@@ -489,9 +535,10 @@ fun RecordScreen(
                             .testTag("delete_day_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DeleteOutline,
+                            imageVector = ClutchIcons.Delete,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
@@ -509,6 +556,7 @@ fun RecordScreen(
             henDayPct = previewHenDay,
             henDayStatus = previewStatus,
             feedPerBirdG = previewFeedG,
+            henHousedPct = previewHenHoused,
             hasEggs = eggsVal != null && eggsVal >= 0,
             isEditing = existingRecord != null,
             isSaving = isSaving,
@@ -517,6 +565,9 @@ fun RecordScreen(
                 if (allErrors.isNotEmpty()) {
                     if (softShellVal > 0 && defectsError != null) {
                         expandOptional = true
+                    }
+                    if (bodyWeightError != null || uniformityError != null) {
+                        expandWeighIn = true
                     }
                     scope.launch { scrollState.animateScrollTo(0) }
                     return@SaveBar
@@ -536,6 +587,8 @@ fun RecordScreen(
                     waterLVal,
                     eggWeightVal,
                     maxTempVal,
+                    bodyWeightVal,
+                    uniformityVal,
                     notesText
                 ) { isSaving = false }
             }
@@ -545,7 +598,7 @@ fun RecordScreen(
     if (showDeleteConfirm && existingRecord != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            icon = { Icon(Icons.Default.DeleteOutline, contentDescription = null) },
+            icon = { Icon(ClutchIcons.Delete, contentDescription = null, modifier = Modifier.size(22.dp)) },
             title = { Text("Delete ${LayerCalc.friendlyDate(selectedDate)}?") },
             text = {
                 Text("The eggs, feed and bird counts for ${dashboard.flock.name} on this day will be removed. You can't undo this.")
@@ -637,8 +690,9 @@ private fun DateSelector(
                     .testTag("date_prev_button")
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "Day before"
+                    imageVector = ClutchIcons.ChevronLeft,
+                    contentDescription = "Day before",
+                    modifier = Modifier.size(16.dp)
                 )
             }
 
@@ -657,7 +711,7 @@ private fun DateSelector(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CalendarMonth,
+                        imageVector = ClutchIcons.Calendar,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
@@ -688,8 +742,9 @@ private fun DateSelector(
                     .testTag("date_next_button")
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Day after"
+                    imageVector = ClutchIcons.ChevronRight,
+                    contentDescription = "Day after",
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -708,9 +763,10 @@ private fun ErrorSummaryCard(errors: List<String>) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Error,
+                imageVector = ClutchIcons.Critical,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(18.dp)
             )
             Text(
                 text = if (errors.size == 1) "Please fix 1 thing before saving" else "Please fix ${errors.size} things before saving",
@@ -782,6 +838,9 @@ private fun TotalLine(text: String, isError: Boolean) {
 
 @Composable
 private fun ExtraDetailsSection(
+    title: String,
+    subtitle: String,
+    toggleTag: String,
     expanded: Boolean,
     onToggle: () -> Unit,
     content: @Composable () -> Unit
@@ -793,27 +852,28 @@ private fun ExtraDetailsSection(
                 .clip(RoundedCornerShape(12.dp))
                 .clickable(role = Role.Button, onClick = onToggle)
                 .heightIn(min = 48.dp)
-                .testTag("more_details_toggle"),
+                .testTag(toggleTag),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Extra details (you can skip)",
+                    text = title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Soft-shell eggs, egg weight, heat, notes",
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Icon(
-                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (expanded) "Hide extra details" else "Show extra details",
-                tint = MaterialTheme.colorScheme.primary
+                imageVector = if (expanded) ClutchIcons.ChevronUp else ClutchIcons.ChevronDown,
+                contentDescription = if (expanded) "Hide $title" else "Show $title",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
             )
         }
 
@@ -830,6 +890,7 @@ private fun SaveBar(
     henDayPct: Double,
     henDayStatus: LayerCalc.TargetState,
     feedPerBirdG: Double,
+    henHousedPct: Double,
     hasEggs: Boolean,
     isEditing: Boolean,
     isSaving: Boolean,
@@ -858,8 +919,12 @@ private fun SaveBar(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     PreviewValue(
-                        label = "Laying",
+                        label = "Hen-day",
                         value = if (hasEggs) "${LayerCalc.format1(henDayPct)}%" else "—"
+                    )
+                    PreviewValue(
+                        label = "Hen-housed",
+                        value = if (hasEggs) "${LayerCalc.format1(henHousedPct)}%" else "—"
                     )
                     PreviewValue(
                         label = "Feed per bird",
@@ -875,7 +940,7 @@ private fun SaveBar(
                         isEditing -> "Save changes"
                         else -> "Save day"
                     },
-                    icon = Icons.Default.Check,
+                    icon = ClutchIcons.Save,
                     loading = isSaving,
                     onClick = onSave,
                     testTag = "save_day_button"

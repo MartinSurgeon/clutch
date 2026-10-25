@@ -1,9 +1,9 @@
 <resources>
     <string name="app_name">Clutch</string>
-    <string name="nav_today">Home</string>
-    <string name="nav_record">Record</string>
-    <string name="nav_trends">Reports</string>
-    <string name="nav_flocks">Pens</string>
+    <string name="nav_today">Dashboard</string>
+    <string name="nav_record">Daily</string>
+    <string name="nav_trends">Weekly</string>
+    <string name="nav_flocks">Guide</string>
     <string name="empty_first_run_title">Akwaaba! Welcome to Clutch</string>
     <string name="empty_first_run_subtitle">Keep your layer farm records in one place, and know early when something is wrong.</string>
     <string name="btn_add_first_flock">Add my first pen</string>

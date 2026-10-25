@@ -208,4 +208,56 @@ object MetricExplanations {
             whatToCheck = "Check calcium in the feed and heat in the pen (panting birds make weak shells). If soft shells jump with a drop in laying, ask your vet about IB or egg drop syndrome."
         )
     }
+
+    fun buildForBadEggs(metrics: LayerCalc.DayMetrics, cracked: Int, dirty: Int, softShell: Int): LayerCalc.MetricExplanation {
+        val total = cracked + dirty + softShell
+        val pct = metrics.crackedPct + metrics.dirtyPct + metrics.softShellPct
+        return LayerCalc.MetricExplanation(
+            id = "bad_eggs",
+            title = "All bad eggs",
+            subtitle = "Cracked, dirty and soft-shell together, for every 100 picked",
+            formattedValue = "${LayerCalc.format1(pct)}%",
+            working = "($cracked cracked + $dirty dirty + $softShell soft) = $total ÷ ${metrics.eggs} eggs × 100 = ${LayerCalc.format1(pct)}%",
+            status = LayerCalc.evaluateEggQualityTarget(pct),
+            formula = "(Cracked + Dirty + Soft-shell) ÷ All eggs picked × 100",
+            targetDescription = "4% or less is good. 4–6%, watch it. Over 6% needs attention.",
+            whatToCheck = "Open the separate numbers to see which one is high, then follow its advice."
+        )
+    }
+
+    fun buildForUniformity(uniformityPct: Double?, date: String?): LayerCalc.MetricExplanation {
+        return LayerCalc.MetricExplanation(
+            id = "uniformity",
+            title = "Flock uniformity",
+            subtitle = "Birds within 10% of the average body weight",
+            formattedValue = uniformityPct?.let { "${LayerCalc.format0(it)}%" } ?: "—",
+            working = if (uniformityPct != null && date != null) {
+                "${LayerCalc.format1(uniformityPct)}% from the weigh-in on ${LayerCalc.friendlyDate(date)}"
+            } else {
+                "No weigh-in yet. Add one in Daily → Weekly weigh-in."
+            },
+            status = LayerCalc.evaluateUniformityTarget(uniformityPct),
+            formula = "Birds weighing within ±10% of the average ÷ Birds weighed × 100",
+            targetDescription = "80% or more is good. 70–80%, watch it. Under 70% needs attention.",
+            whatToCheck = "Low uniformity means some birds are not getting enough feed or water. Check feeder and drinker space, crowding, worms, and pecking. Sort out small birds if you can."
+        )
+    }
+
+    fun buildForBodyWeight(bodyWeightG: Double?, date: String?): LayerCalc.MetricExplanation {
+        return LayerCalc.MetricExplanation(
+            id = "body_weight",
+            title = "Body weight",
+            subtitle = "Average weight of the birds you weighed",
+            formattedValue = bodyWeightG?.let { "${LayerCalc.format2(it / 1000.0)} kg" } ?: "—",
+            working = if (bodyWeightG != null && date != null) {
+                "${LayerCalc.format0(bodyWeightG)} g from the weigh-in on ${LayerCalc.friendlyDate(date)}"
+            } else {
+                "No weigh-in yet. Add one in Daily → Weekly weigh-in."
+            },
+            status = LayerCalc.TargetState.NOT_APPLICABLE,
+            formula = "Total weight of the sample ÷ Number of birds weighed",
+            targetDescription = "Follow the weight chart in your breed's management guide. Brown layers in lay are often about 1.8–2.1 kg.",
+            whatToCheck = "Weight going down in lay usually means birds are not eating enough. Check feed quality, heat, water, and signs of sickness."
+        )
+    }
 }

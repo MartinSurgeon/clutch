@@ -4,6 +4,7 @@ import com.example.data.local.ClutchDao
 import com.example.data.local.DailyRecordEntity
 import com.example.data.local.FlockEntity
 import com.example.data.local.SyncState
+import com.example.data.local.WeeklyNoteEntity
 import com.example.domain.LayerCalc
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.roundToInt
@@ -11,6 +12,7 @@ import kotlin.math.roundToInt
 interface ClutchRepository {
     val allFlocks: Flow<List<FlockEntity>>
     val allActiveRecords: Flow<List<DailyRecordEntity>>
+    val allWeeklyNotes: Flow<List<WeeklyNoteEntity>>
 
     fun observeRecordsForFlock(flockId: String): Flow<List<DailyRecordEntity>>
     suspend fun getRecordsForFlockOnce(flockId: String): List<DailyRecordEntity>
@@ -23,6 +25,8 @@ interface ClutchRepository {
     suspend fun saveDailyRecord(record: DailyRecordEntity)
     suspend fun deleteDailyRecord(flockId: String, date: String)
 
+    suspend fun saveWeeklyNote(note: WeeklyNoteEntity)
+
     suspend fun insertExampleFlockAndRecords(todayDate: String): String
     suspend fun removeExampleData()
     suspend fun buildCsvExport(): String
@@ -34,6 +38,7 @@ class RoomClutchRepository(
 
     override val allFlocks: Flow<List<FlockEntity>> = dao.observeAllFlocks()
     override val allActiveRecords: Flow<List<DailyRecordEntity>> = dao.observeAllActiveRecords()
+    override val allWeeklyNotes: Flow<List<WeeklyNoteEntity>> = dao.observeAllWeeklyNotes()
 
     override fun observeRecordsForFlock(flockId: String): Flow<List<DailyRecordEntity>> =
         dao.observeRecordsForFlock(flockId)
@@ -79,7 +84,19 @@ class RoomClutchRepository(
         dao.softDeleteRecord(canonicalId, System.currentTimeMillis())
     }
 
+    override suspend fun saveWeeklyNote(note: WeeklyNoteEntity) {
+        dao.upsertWeeklyNote(
+            note.copy(
+                id = WeeklyNoteEntity.buildId(note.flockId, note.ageWeek),
+                updatedAt = System.currentTimeMillis(),
+                deleted = false,
+                syncState = SyncState.PENDING
+            )
+        )
+    }
+
     override suspend fun removeExampleData() {
+        dao.hardDeleteExampleWeeklyNotes()
         dao.hardDeleteExampleRecords()
         dao.hardDeleteExampleFlocks()
     }
@@ -187,6 +204,11 @@ class RoomClutchRepository(
                 }
             } else null
 
+            // Fortnightly weigh-in of 50 birds: body weight climbs towards ~1.95 kg, uniformity 78–86%
+            val isWeighIn = dayInWeek == 6 && weekOffset % 2 == 1
+            val bodyWeightG: Double? = if (isWeighIn) 1500.0 + weekOffset * 42.0 else null
+            val uniformityPct: Double? = if (isWeighIn) (78.0 + weekOffset * 0.8).coerceAtMost(86.0) else null
+
             val maxTempC = 24.0 + (dayInWeek % 4) * 1.0
             val note = when (dayIndex) {
                 totalDays - 1 -> "Nipple line pressure in back row looked slow this afternoon."
@@ -210,6 +232,8 @@ class RoomClutchRepository(
                     waterL = waterL,
                     avgEggWeightG = avgEggWeightG,
                     maxTempC = maxTempC,
+                    bodyWeightG = bodyWeightG,
+                    uniformityPct = uniformityPct,
                     notes = note,
                     enteredBy = "example_worker",
                     enteredByName = "Grace (Example)",
@@ -223,6 +247,28 @@ class RoomClutchRepository(
         }
 
         dao.upsertRecords(records)
+
+        val lastWeek = 17 + (totalDays - 1) / 7
+        dao.upsertWeeklyNotes(
+            listOf(
+                WeeklyNoteEntity(
+                    id = WeeklyNoteEntity.buildId(flockId, 20),
+                    flockId = flockId,
+                    ageWeek = 20,
+                    notes = "Changed from grower to layer feed. Light raised to 14 hours.",
+                    actions = "Add 30 minutes of light each week until 16 hours.",
+                    syncState = SyncState.SYNCED
+                ),
+                WeeklyNoteEntity(
+                    id = WeeklyNoteEntity.buildId(flockId, lastWeek),
+                    flockId = flockId,
+                    ageWeek = lastWeek,
+                    notes = "Laying dropped at the end of the week. Water flow in the back row is slow.",
+                    actions = "Flush nipple lines and check header tank valve. Call vet if laying keeps dropping.",
+                    syncState = SyncState.SYNCED
+                )
+            )
+        )
         return flockId
     }
 
@@ -230,7 +276,7 @@ class RoomClutchRepository(
         val flocks = dao.getAllFlocksOnce()
         val sb = StringBuilder()
         sb.appendLine(
-            "flock_id,flock_name,breed,hens_housed,placed_date,age_weeks_at_placement,date,age_weeks,live_hens,closing_hens,eggs,hen_day_pct,hen_housed_pct,cracked,dirty,soft_shell,deaths,culls,feed_kg,feed_g_per_bird,water_l,water_ml_per_bird,avg_egg_weight_g,egg_mass_g,fcr,max_temp_c,notes,sync_state"
+            "flock_id,flock_name,breed,hens_housed,placed_date,age_weeks_at_placement,date,age_weeks,live_hens,closing_hens,eggs,hen_day_pct,hen_housed_pct,cracked,dirty,soft_shell,deaths,culls,feed_kg,feed_g_per_bird,water_l,water_ml_per_bird,avg_egg_weight_g,egg_mass_g,fcr,max_temp_c,body_weight_g,uniformity_pct,notes,sync_state"
         )
         for (flock in flocks) {
             val flockInput = LayerCalc.FlockInput(
@@ -256,7 +302,9 @@ class RoomClutchRepository(
                     waterL = it.waterL,
                     avgEggWeightG = it.avgEggWeightG,
                     maxTempC = it.maxTempC,
-                    notes = it.notes
+                    notes = it.notes,
+                    bodyWeightG = it.bodyWeightG,
+                    uniformityPct = it.uniformityPct
                 )
             }
             for ((idx, rec) in records.withIndex()) {
@@ -265,7 +313,7 @@ class RoomClutchRepository(
                 val safeFlockName = flock.name.replace("\"", "\"\"")
                 val safeBreed = flock.breed.replace("\"", "\"\"")
                 sb.appendLine(
-                    "\"${flock.id}\",\"$safeFlockName\",\"$safeBreed\",${flock.hensHoused},${flock.placedDate},${flock.ageWeeksAtPlacement},${rec.date},${m.ageWeeks},${rec.liveHens},${m.closingHens},${rec.eggs},${LayerCalc.format1(m.henDayPct)},${LayerCalc.format1(m.henHousedPct)},${rec.cracked},${rec.dirty},${rec.softShell},${rec.deaths},${rec.culls},${rec.feedKg},${LayerCalc.format1(m.feedPerBirdG)},${rec.waterL},${LayerCalc.format1(m.waterPerBirdMl)},${rec.avgEggWeightG ?: ""},${m.eggMassG?.let { LayerCalc.format1(it) } ?: ""},${m.fcr?.let { LayerCalc.format2(it) } ?: ""},${rec.maxTempC ?: ""},\"$safeNotes\",${rec.syncState.name}"
+                    "\"${flock.id}\",\"$safeFlockName\",\"$safeBreed\",${flock.hensHoused},${flock.placedDate},${flock.ageWeeksAtPlacement},${rec.date},${m.ageWeeks},${rec.liveHens},${m.closingHens},${rec.eggs},${LayerCalc.format1(m.henDayPct)},${LayerCalc.format1(m.henHousedPct)},${rec.cracked},${rec.dirty},${rec.softShell},${rec.deaths},${rec.culls},${rec.feedKg},${LayerCalc.format1(m.feedPerBirdG)},${rec.waterL},${LayerCalc.format1(m.waterPerBirdMl)},${rec.avgEggWeightG ?: ""},${m.eggMassG?.let { LayerCalc.format1(it) } ?: ""},${m.fcr?.let { LayerCalc.format2(it) } ?: ""},${rec.maxTempC ?: ""},${rec.bodyWeightG ?: ""},${rec.uniformityPct ?: ""},\"$safeNotes\",${rec.syncState.name}"
                 )
             }
         }
