@@ -43,9 +43,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.data.local.WeeklyNoteEntity
 import com.example.domain.LayerCalc
+import com.example.domain.TrendInsights
 import com.example.domain.WeeklyCalc
 import com.example.ui.ClutchUiState
+import com.example.ui.components.ChartDatum
+import com.example.ui.components.ChartKind
+import com.example.ui.components.ChartMetricSelector
+import com.example.ui.components.ChartSpec
 import com.example.ui.components.ClutchCard
+import com.example.ui.components.PerformanceChartCard
 import com.example.ui.components.ClutchDimens
 import com.example.ui.components.ClutchPrimaryButton
 import com.example.ui.components.EmptyStateCard
@@ -102,6 +108,19 @@ fun WeeklyScreen(
                 ScreenTitle(
                     title = "Weekly summary",
                     subtitle = "${dashboard.flock.name} • ${weeks.size} ${if (weeks.size == 1) "week" else "weeks"}, newest first"
+                )
+            }
+
+            item(key = "weekly_chart") {
+                WeekByWeekChart(weeks = weeks)
+            }
+
+            item(key = "weeks_header") {
+                Text(
+                    text = "Week by week details",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
             }
 
@@ -342,5 +361,79 @@ private fun WeeklyNoteSheet(
             )
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+private val WEEKLY_METRICS = listOf(
+    "eggs" to "Eggs",
+    "henday" to "Hen-day",
+    "feed" to "Feed per bird",
+    "fcr" to "FCR",
+    "deaths" to "Deaths"
+)
+
+/**
+ * Week-by-week bars at the top of the summary, so the farmer sees the shape of the
+ * flock's weeks before reading the numbers.
+ */
+@Composable
+private fun WeekByWeekChart(weeks: List<WeeklyCalc.WeekSummary>) {
+    var metric by rememberSaveable { mutableStateOf("eggs") }
+    val ordered = weeks.sortedBy { it.ageWeek }.takeLast(16)
+
+    fun datum(w: WeeklyCalc.WeekSummary, value: Double, detail: String? = null) = ChartDatum(
+        shortLabel = "Wk ${w.ageWeek}",
+        fullLabel = "Week ${w.ageWeek} of age • ${w.daysRecorded} of 7 days",
+        value = value,
+        detail = detail
+    )
+
+    val spec = when (metric) {
+        "henday" -> ChartSpec(
+            id = "weekly_henday", title = "Weekly hen-day", meaning = "Eggs for every 100 live hens, per week",
+            unit = "%", decimals = 1,
+            data = ordered.map { datum(it, it.henDayPct, "${it.totalEggs} eggs • average ${LayerCalc.format0(it.avgLiveHens)} hens") },
+            bandMin = 85.0, bandMax = 95.0, targetText = "Target 85–95% at peak",
+            goodness = TrendInsights.Goodness.HIGHER_IS_BETTER, yFloor = 50.0, yCeil = 100.0,
+            kinds = listOf(ChartKind.BARS, ChartKind.LINE), pointNoun = "week"
+        )
+        "feed" -> ChartSpec(
+            id = "weekly_feed", title = "Feed per bird", meaning = "Average grams per bird per day, each week",
+            unit = " g", decimals = 0,
+            data = ordered.filter { it.feedPerBirdG > 0 }.map { datum(it, it.feedPerBirdG, "${LayerCalc.format1(it.totalFeedKg)} kg used this week") },
+            bandMin = 110.0, bandMax = 125.0, targetText = "Target 110–125 g",
+            goodness = TrendInsights.Goodness.IN_BAND_IS_BEST, yFloor = 90.0, yCeil = 135.0,
+            kinds = listOf(ChartKind.BARS, ChartKind.LINE), pointNoun = "week"
+        )
+        "fcr" -> ChartSpec(
+            id = "weekly_fcr", title = "Feed efficiency (FCR)", meaning = "Kg of feed for every kg of eggs",
+            unit = "", decimals = 2,
+            data = ordered.mapNotNull { w -> w.fcr?.let { datum(w, it, w.feedPerCrateKg?.let { c -> "${LayerCalc.format2(c)} kg feed per crate" }) } },
+            bandMin = null, bandMax = 2.2, targetText = "Target 2.2 or less",
+            goodness = TrendInsights.Goodness.LOWER_IS_BETTER, yFloor = 1.5, yCeil = 2.6,
+            kinds = listOf(ChartKind.BARS, ChartKind.LINE), pointNoun = "week",
+            emptyMessage = "Weigh eggs once a week to see FCR here."
+        )
+        "deaths" -> ChartSpec(
+            id = "weekly_deaths", title = "Weekly deaths", meaning = "Birds that died each week, per 100 birds",
+            unit = "%", decimals = 2,
+            data = ordered.map { datum(it, it.mortalityPct, "${it.deaths} ${if (it.deaths == 1) "bird" else "birds"} died") },
+            bandMin = null, bandMax = 0.1, targetText = "Target under 0.1% a week",
+            goodness = TrendInsights.Goodness.LOWER_IS_BETTER, yFloor = 0.0, yCeil = 0.3,
+            kinds = listOf(ChartKind.BARS, ChartKind.LINE), pointNoun = "week"
+        )
+        else -> ChartSpec(
+            id = "weekly_eggs", title = "Eggs each week", meaning = "Total eggs collected per week",
+            unit = "", decimals = 0,
+            data = ordered.map { datum(it, it.totalEggs.toDouble(), LayerCalc.formatCratesHelper(it.totalEggs)) },
+            bandMin = null, bandMax = null, targetText = null,
+            goodness = TrendInsights.Goodness.HIGHER_IS_BETTER, yFloor = 0.0, yCeil = 0.0,
+            kinds = listOf(ChartKind.BARS, ChartKind.LINE), pointNoun = "week"
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ChartMetricSelector(options = WEEKLY_METRICS, selectedId = metric, onSelect = { metric = it })
+        PerformanceChartCard(spec = spec)
     }
 }

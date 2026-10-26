@@ -1,12 +1,12 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,20 +28,25 @@ import androidx.compose.ui.unit.dp
 import com.example.domain.LayerCalc
 import com.example.domain.MetricExplanations
 import com.example.domain.ReferenceTargets
+import com.example.domain.TrendInsights
 import com.example.ui.ActiveFlockDashboard
 import com.example.ui.ClutchUiState
 import com.example.ui.RecordWithMetrics
 import com.example.ui.TrendWindow
 import com.example.ui.components.BrandHeroCard
-import com.example.ui.components.ChartPoint
+import com.example.ui.components.ChartDatum
+import com.example.ui.components.ChartKind
+import com.example.ui.components.ChartMetricSelector
+import com.example.ui.components.ChartSpec
+import com.example.ui.components.ClutchDimens
+import com.example.ui.components.PerformanceChartCard
+import com.example.ui.components.PeriodSwitch
 import com.example.ui.components.ClutchCard
 import com.example.ui.components.ClutchPrimaryButton
 import com.example.ui.components.ClutchSecondaryButton
 import com.example.ui.components.EggYolkLogo
 import com.example.ui.components.EmptyStateCard
 import com.example.ui.components.IconBadge
-import com.example.ui.components.InfoNote
-import com.example.ui.components.LineTrendChartCard
 import com.example.ui.components.MetricExplanationBottomSheet
 import com.example.ui.components.OfflineReassurance
 import com.example.ui.components.ScreenColumn
@@ -48,7 +54,6 @@ import com.example.ui.components.SectionHeader
 import com.example.ui.components.StatTile
 import com.example.ui.components.StatusChip
 import com.example.ui.components.WarningsSectionCard
-import com.example.ui.components.WeeklyMortalityBarChartCard
 import com.example.ui.theme.ClutchIcons
 import com.example.ui.theme.EggYolkHighlight
 import com.example.ui.theme.OnBrandDeepGreen
@@ -67,7 +72,7 @@ fun DashboardScreen(
     var selectedExplanation by remember { mutableStateOf<LayerCalc.MetricExplanation?>(null) }
     val dashboard = uiState.activeDashboard
 
-    ScreenColumn(modifier = modifier, testTag = "today_screen") {
+    ScreenColumn(modifier = modifier, testTag = "today_screen", maxContentWidth = ClutchDimens.WideContentMaxWidth) {
         when {
             uiState.flocks.isEmpty() || dashboard == null -> {
                 FirstRunWelcome(
@@ -234,36 +239,73 @@ private fun DashboardContent(
     val m = latest.metrics
     val rec = latest.entity
 
-    // 1. Greeting + today's one job (serial position: most important first)
-    Greeting(todayDate = todayDate)
-    TodayTaskCard(isTodayRecorded = dashboard.isTodayRecorded, onRecordToday = onRecordToday)
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val twoPane = maxWidth >= ClutchDimens.TwoPaneMinWidth
 
-    // 2. Headline number
-    LayingHeroCard(
-        metrics = m,
-        isLatestToday = rec.date == todayDate,
-        onClick = { onMetricClick(MetricExplanations.buildForHenDay(m)) }
-    )
+        val hero: @Composable () -> Unit = {
+            LayingHeroCard(
+                metrics = m,
+                isLatestToday = rec.date == todayDate,
+                onClick = { onMetricClick(MetricExplanations.buildForHenDay(m)) }
+            )
+        }
+        val trends: @Composable () -> Unit = {
+            TrendsSection(dashboard = dashboard, trendWindow = trendWindow, onSelectWindow = onSelectWindow)
+        }
+        val task: @Composable () -> Unit = {
+            TodayTaskCard(isTodayRecorded = dashboard.isTodayRecorded, onRecordToday = onRecordToday)
+        }
+        val indicators: @Composable () -> Unit = {
+            LatestIndicators(dashboard = dashboard, latest = latest, onMetricClick = onMetricClick)
+        }
+        val warnings: @Composable () -> Unit = {
+            WarningsSectionCard(warnings = dashboard.warnings)
+        }
 
-    // 3. Latest flock performance indicators (6 tiles, 2 per row)
-    LatestIndicators(dashboard = dashboard, latest = latest, onMetricClick = onMetricClick)
-
-    // 4. Things to check
-    WarningsSectionCard(warnings = dashboard.warnings)
-
-    // 5. Trends
-    TrendCharts(dashboard = dashboard, trendWindow = trendWindow, onSelectWindow = onSelectWindow)
-
-    // 6. Strong, calm ending (peak-end rule)
-    if (!dashboard.isTodayRecorded) {
-        ClutchPrimaryButton(
-            text = "Record today's count",
-            icon = ClutchIcons.Record,
-            onClick = onRecordToday,
-            testTag = "record_today_button_end"
-        )
+        if (twoPane) {
+            // Tablet / landscape: what is happening (left) beside what to do about it (right)
+            Column(verticalArrangement = Arrangement.spacedBy(ClutchDimens.SectionGap)) {
+                Greeting(todayDate = todayDate)
+                Row(horizontalArrangement = Arrangement.spacedBy(ClutchDimens.SectionGap)) {
+                    Column(
+                        modifier = Modifier.weight(1.15f),
+                        verticalArrangement = Arrangement.spacedBy(ClutchDimens.SectionGap)
+                    ) {
+                        hero()
+                        trends()
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(ClutchDimens.SectionGap)
+                    ) {
+                        task()
+                        indicators()
+                        warnings()
+                        OfflineReassurance()
+                    }
+                }
+            }
+        } else {
+            // Phone: one column, most important first and a clear action last (serial position)
+            Column(verticalArrangement = Arrangement.spacedBy(ClutchDimens.SectionGap)) {
+                Greeting(todayDate = todayDate)
+                task()
+                hero()
+                trends()
+                indicators()
+                warnings()
+                if (!dashboard.isTodayRecorded) {
+                    ClutchPrimaryButton(
+                        text = "Record today's count",
+                        icon = ClutchIcons.Record,
+                        onClick = onRecordToday,
+                        testTag = "record_today_button_end"
+                    )
+                }
+                OfflineReassurance()
+            }
+        }
     }
-    OfflineReassurance()
 }
 
 @Composable
@@ -428,17 +470,16 @@ private fun LatestIndicators(
 ) {
     val m = latest.metrics
     val rec = latest.entity
-    val birdsNow = m.closingHens
     val badEggPct = m.crackedPct + m.dirtyPct + m.softShellPct
     val weighIn = dashboard.latestWeighIn
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionHeader(title = "Latest performance", subtitle = "Tap any number to see what it means")
+        SectionHeader(title = "Latest performance", subtitle = "Tap a number to see what it means and what to do")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatTile(
                 label = "Feed intake",
                 value = "${LayerCalc.format0(m.feedPerBirdG)} g",
-                caption = "per bird • ${rec.feedKg} kg given",
+                caption = "per bird",
                 icon = ClutchIcons.Feed,
                 status = m.feedStatus,
                 onClick = { onMetricClick(MetricExplanations.buildForFeedPerBird(m, rec.feedKg)) },
@@ -448,7 +489,7 @@ private fun LatestIndicators(
             StatTile(
                 label = "Egg mass",
                 value = m.eggMassG?.let { "${LayerCalc.format1(it)} g" } ?: "—",
-                caption = m.effectiveEggWeightG?.let { "egg weight ${LayerCalc.format1(it)} g" } ?: "weigh eggs to see",
+                caption = "Weigh eggs to see this",
                 icon = ClutchIcons.Egg,
                 status = m.eggMassStatus,
                 onClick = { onMetricClick(MetricExplanations.buildForEggMass(m)) },
@@ -468,9 +509,9 @@ private fun LatestIndicators(
                 testTag = "stat_fcr"
             )
             StatTile(
-                label = "Deaths this week",
+                label = "Deaths (7 days)",
                 value = "${m.deathsIn7Days}",
-                caption = "${LayerCalc.format2(m.sevenDayMortalityPct)}% • $birdsNow birds now",
+                caption = "${LayerCalc.format2(m.sevenDayMortalityPct)}% of flock",
                 icon = ClutchIcons.Deaths,
                 status = m.sevenDayMortalityStatus,
                 onClick = { onMetricClick(MetricExplanations.buildForSevenDayMortality(m)) },
@@ -492,7 +533,7 @@ private fun LatestIndicators(
             StatTile(
                 label = "Uniformity",
                 value = weighIn?.uniformityPct?.let { "${LayerCalc.format0(it)}%" } ?: "—",
-                caption = weighIn?.bodyWeightG?.let { "body weight ${LayerCalc.format2(it / 1000.0)} kg" } ?: "no weigh-in yet",
+                caption = "No weigh-in yet",
                 icon = ClutchIcons.Weight,
                 status = LayerCalc.evaluateUniformityTarget(weighIn?.uniformityPct),
                 onClick = { onMetricClick(MetricExplanations.buildForUniformity(weighIn?.uniformityPct, weighIn?.date)) },
@@ -503,12 +544,50 @@ private fun LatestIndicators(
     }
 }
 
+// --- Trends: one chart at a time, chosen with chips (Hick's Law) ---
+
+private const val METRIC_LAYING = "laying"
+private const val METRIC_FEED = "feed"
+private const val METRIC_EGG_MASS = "egg_mass"
+private const val METRIC_DEATHS = "deaths"
+private const val METRIC_QUALITY = "quality"
+
+private val METRIC_OPTIONS = listOf(
+    METRIC_LAYING to "Hen-day",
+    METRIC_FEED to "Feed intake",
+    METRIC_EGG_MASS to "Egg mass",
+    METRIC_DEATHS to "Deaths",
+    METRIC_QUALITY to "Egg quality"
+)
+
+/** Daily points up to this many; beyond it the chart shows weekly averages so bars stay readable. */
+private const val MAX_DAILY_POINTS = 45
+
+/** One week of records rolled up for charting. */
+private data class WeekBucket(
+    val ageWeek: Int,
+    val days: List<RecordWithMetrics>
+) {
+    val eggs = days.sumOf { it.entity.eggs }
+    val birdDays = days.sumOf { it.entity.liveHens }
+    val henDay = if (birdDays > 0) eggs * 100.0 / birdDays else 0.0
+    val feedPerBird = if (birdDays > 0) days.sumOf { it.entity.feedKg } * 1000.0 / birdDays else 0.0
+    val eggMass: Double? = days.mapNotNull { it.metrics.eggMassG }.takeIf { it.isNotEmpty() }?.average()
+    fun pctOf(count: (RecordWithMetrics) -> Int) = if (eggs > 0) days.sumOf(count) * 100.0 / eggs else 0.0
+    val label = "Wk $ageWeek"
+    val fullLabel = "Week $ageWeek of age • ${days.size} ${if (days.size == 1) "day" else "days"}"
+}
+
+private fun shortDay(iso: String) = LayerCalc.friendlyDate(iso).substringAfter(" ")
+
 @Composable
-private fun TrendCharts(
+private fun TrendsSection(
     dashboard: ActiveFlockDashboard,
     trendWindow: TrendWindow,
     onSelectWindow: (TrendWindow) -> Unit
 ) {
+    var metric by rememberSaveable { mutableStateOf(METRIC_LAYING) }
+
     val allRecords = dashboard.allRecordsAsc
     val latestEpoch = LayerCalc.parseEpochDay(allRecords.last().entity.date)
     val records = remember(allRecords, trendWindow, latestEpoch) {
@@ -520,102 +599,180 @@ private fun TrendCharts(
             allRecords.filter { LayerCalc.parseEpochDay(it.entity.date) >= minEpoch }
         }
     }
-    val minWeek = records.minOfOrNull { it.metrics.ageWeeks } ?: 0
-    val weeklyMortality = dashboard.weeklyMortality.filter { it.ageWeeks >= minWeek }
+    val weekly = records.size > MAX_DAILY_POINTS
+    val weeks = remember(records) {
+        records.groupBy { it.metrics.ageWeeks }.toSortedMap().map { (w, days) -> WeekBucket(w, days) }
+    }
 
-    fun label(r: RecordWithMetrics) = "${LayerCalc.friendlyDate(r.entity.date)} • wk ${r.metrics.ageWeeks}"
+    val specs = remember(records, weekly, dashboard.weeklyMortality) {
+        buildChartSpecs(records, weeks, weekly, dashboard)
+    }
+    val attention = specs.filterValues { spec ->
+        spec.data.lastOrNull()?.let {
+            TrendInsights.isInBand(it.value, spec.bandMin, spec.bandMax) == false
+        } == true
+    }.keys
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionHeader(title = "Trends", subtitle = "Tap a chart to see each day")
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            TrendWindow.entries.forEach { window ->
-                val isSelected = window == trendWindow
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onSelectWindow(window) },
-                    label = { Text(window.label, maxLines = 1) },
-                    modifier = Modifier
-                        .heightIn(min = 40.dp)
-                        .testTag("filter_chip_${window.name.lowercase()}")
+        SectionHeader(title = "Trends", subtitle = "Pick what to look at. A dot means it needs attention.")
+        ChartMetricSelector(
+            options = METRIC_OPTIONS,
+            selectedId = metric,
+            onSelect = { metric = it },
+            attention = attention
+        )
+        PeriodSwitch(
+            options = TrendWindow.entries,
+            selected = trendWindow,
+            label = { it.label },
+            onSelect = onSelectWindow
+        )
+        specs[metric]?.let { PerformanceChartCard(spec = it) }
+    }
+}
+
+private fun buildChartSpecs(
+    records: List<RecordWithMetrics>,
+    weeks: List<WeekBucket>,
+    weekly: Boolean,
+    dashboard: ActiveFlockDashboard
+): Map<String, ChartSpec> {
+    val noun = if (weekly) "week" else "day"
+    val minWeek = records.minOfOrNull { it.metrics.ageWeeks } ?: 0
+
+    fun daily(value: (RecordWithMetrics) -> Double?, detail: (RecordWithMetrics) -> String? = { null }) =
+        records.mapNotNull { r ->
+            value(r)?.let {
+                ChartDatum(
+                    shortLabel = shortDay(r.entity.date),
+                    fullLabel = "${LayerCalc.friendlyDate(r.entity.date)} • week ${r.metrics.ageWeeks}",
+                    value = it,
+                    detail = detail(r)
                 )
             }
         }
 
-        LineTrendChartCard(
-            title = "Hen-day production",
-            subtitle = "Laying %. Green band is the peak target (85–95%).",
-            icon = ClutchIcons.Dashboard,
-            points = records.map {
-                ChartPoint(label(it), it.metrics.henDayPct, "${LayerCalc.format1(it.metrics.henDayPct)}%")
-            },
-            bandMin = 85.0,
-            bandMax = 95.0,
-            bandLabel = "Target 85–95%",
-            yMinFloor = 0.0,
-            yMaxCeiling = 100.0,
-            testTag = "chart_henday"
-        )
+    fun weeklyData(value: (WeekBucket) -> Double?) =
+        weeks.mapNotNull { w -> value(w)?.let { ChartDatum(w.label, w.fullLabel, it) } }
 
-        LineTrendChartCard(
-            title = "Feed intake",
-            subtitle = "Grams per bird per day. Target band 110–125 g.",
-            icon = ClutchIcons.Feed,
-            points = records.map {
-                ChartPoint(label(it), it.metrics.feedPerBirdG, "${LayerCalc.format0(it.metrics.feedPerBirdG)} g")
-            },
-            bandMin = 110.0,
-            bandMax = 125.0,
-            bandLabel = "Target 110–125 g",
-            yMinFloor = 60.0,
-            yMaxCeiling = 150.0,
-            testTag = "chart_feed"
-        )
+    val laying = ChartSpec(
+        id = METRIC_LAYING,
+        title = "Hen-day production",
+        meaning = "Eggs for every 100 live hens",
+        unit = "%",
+        decimals = 1,
+        data = if (weekly) weeklyData { it.henDay } else daily({ it.metrics.henDayPct }) { "${it.entity.eggs} eggs from ${it.entity.liveHens} hens" },
+        bandMin = 85.0,
+        bandMax = 95.0,
+        targetText = "Target 85–95% at peak (25–35 weeks)",
+        goodness = TrendInsights.Goodness.HIGHER_IS_BETTER,
+        yFloor = 50.0,
+        yCeil = 100.0,
+        kinds = listOf(ChartKind.LINE, ChartKind.BARS),
+        pointNoun = noun
+    )
 
-        LineTrendChartCard(
-            title = "Egg mass",
-            subtitle = "Grams of egg per bird per day. Aim for 55 g or more.",
-            icon = ClutchIcons.Egg,
-            points = records.mapNotNull { r ->
-                r.metrics.eggMassG?.let { ChartPoint(label(r), it, "${LayerCalc.format1(it)} g") }
-            },
-            bandMin = 55.0,
-            bandMax = null,
-            bandLabel = "Target 55 g+",
-            yMinFloor = 30.0,
-            yMaxCeiling = 65.0,
-            testTag = "chart_egg_mass",
-            emptyMessage = "Weigh your eggs once a week to see egg mass here."
-        )
+    val feed = ChartSpec(
+        id = METRIC_FEED,
+        title = "Feed intake",
+        meaning = "Grams of feed per bird per day",
+        unit = " g",
+        decimals = 0,
+        data = if (weekly) weeklyData { it.feedPerBird } else daily({ it.metrics.feedPerBirdG }) { "${it.entity.feedKg} kg for ${it.entity.liveHens} hens" },
+        bandMin = 110.0,
+        bandMax = 125.0,
+        targetText = "Target 110–125 g",
+        goodness = TrendInsights.Goodness.IN_BAND_IS_BEST,
+        yFloor = 90.0,
+        yCeil = 135.0,
+        kinds = listOf(ChartKind.BARS, ChartKind.LINE),
+        pointNoun = noun
+    )
 
-        WeeklyMortalityBarChartCard(
-            points = weeklyMortality.ifEmpty { dashboard.weeklyMortality },
-            testTag = "chart_weekly_mortality"
-        )
-        InfoNote(text = ReferenceTargets.DISCLAIMER_MORTALITY, icon = ClutchIcons.Info)
+    val eggMass = ChartSpec(
+        id = METRIC_EGG_MASS,
+        title = "Egg mass",
+        meaning = "Grams of egg each bird gives per day",
+        unit = " g",
+        decimals = 1,
+        data = if (weekly) weeklyData { it.eggMass } else daily({ it.metrics.eggMassG }) { r ->
+            r.metrics.effectiveEggWeightG?.let { "Egg weight ${LayerCalc.format1(it)} g × ${LayerCalc.format1(r.metrics.henDayPct)}% laying" }
+        },
+        bandMin = 55.0,
+        bandMax = null,
+        targetText = "Target 55 g or more from 25 weeks",
+        goodness = TrendInsights.Goodness.HIGHER_IS_BETTER,
+        yFloor = 40.0,
+        yCeil = 62.0,
+        kinds = listOf(ChartKind.LINE, ChartKind.BARS),
+        pointNoun = noun,
+        emptyMessage = "Weigh 30 eggs once a week (Daily → record) to see egg mass here."
+    )
 
-        LineTrendChartCard(
-            title = "Egg quality",
-            subtitle = "Bad eggs (cracked + dirty + soft) per 100. Aim for 4% or less.",
-            icon = ClutchIcons.Quality,
-            points = records.filter { it.entity.eggs > 0 }.map {
-                val m = it.metrics
-                val total = m.crackedPct + m.dirtyPct + m.softShellPct
-                ChartPoint(
-                    label = label(it),
-                    value = total,
-                    formatted = "${LayerCalc.format1(total)}%",
-                    detail = "Cracked ${LayerCalc.format1(m.crackedPct)}% • Dirty ${LayerCalc.format1(m.dirtyPct)}% • Soft ${LayerCalc.format1(m.softShellPct)}%"
-                )
-            },
-            bandMin = null,
-            bandMax = 4.0,
-            bandLabel = "Target 4% or less",
-            yMinFloor = 0.0,
-            yMaxCeiling = 8.0,
-            testTag = "chart_egg_quality"
-        )
+    // Deaths are always weekly: one day on its own says little (client caveat)
+    val weeklyDeaths = dashboard.weeklyMortality.filter { it.ageWeeks >= minWeek }
+    val deaths = ChartSpec(
+        id = METRIC_DEATHS,
+        title = "Deaths by week",
+        meaning = "Birds that died each week, per 100 birds",
+        unit = "%",
+        decimals = 2,
+        data = weeklyDeaths.map {
+            ChartDatum(
+                shortLabel = "Wk ${it.ageWeeks}",
+                fullLabel = "Week ${it.ageWeeks} of age",
+                value = it.mortalityPct,
+                detail = "${it.deaths} ${if (it.deaths == 1) "bird" else "birds"} died out of ${it.startLiveHens}"
+            )
+        },
+        bandMin = null,
+        bandMax = 0.1,
+        targetText = "Target under 0.1% a week",
+        goodness = TrendInsights.Goodness.LOWER_IS_BETTER,
+        yFloor = 0.0,
+        yCeil = 0.3,
+        kinds = listOf(ChartKind.BARS, ChartKind.LINE),
+        pointNoun = "week",
+        footnote = ReferenceTargets.DISCLAIMER_MORTALITY
+    )
+
+    val qualityData = if (weekly) {
+        weeks.filter { it.eggs > 0 }.map { w ->
+            val c = w.pctOf { it.entity.cracked }
+            val d = w.pctOf { it.entity.dirty }
+            val s = w.pctOf { it.entity.softShell }
+            ChartDatum(w.label, w.fullLabel, c + d + s, listOf(c, d, s),
+                "Cracked ${LayerCalc.format1(c)}% • Dirty ${LayerCalc.format1(d)}% • Soft ${LayerCalc.format1(s)}%")
+        }
+    } else {
+        records.filter { it.entity.eggs > 0 }.map { r ->
+            val mm = r.metrics
+            ChartDatum(
+                shortLabel = shortDay(r.entity.date),
+                fullLabel = "${LayerCalc.friendlyDate(r.entity.date)} • week ${mm.ageWeeks}",
+                value = mm.crackedPct + mm.dirtyPct + mm.softShellPct,
+                segments = listOf(mm.crackedPct, mm.dirtyPct, mm.softShellPct),
+                detail = "Cracked ${LayerCalc.format1(mm.crackedPct)}% • Dirty ${LayerCalc.format1(mm.dirtyPct)}% • Soft ${LayerCalc.format1(mm.softShellPct)}%"
+            )
+        }
     }
+    val quality = ChartSpec(
+        id = METRIC_QUALITY,
+        title = "Egg quality",
+        meaning = "Bad eggs for every 100 picked",
+        unit = "%",
+        decimals = 1,
+        data = qualityData,
+        bandMin = null,
+        bandMax = 4.0,
+        targetText = "Target 4% or less in total",
+        goodness = TrendInsights.Goodness.LOWER_IS_BETTER,
+        yFloor = 0.0,
+        yCeil = 5.0,
+        kinds = listOf(ChartKind.STACKED, ChartKind.LINE),
+        pointNoun = noun,
+        segmentNames = listOf("Cracked", "Dirty", "Soft-shell")
+    )
+
+    return listOf(laying, feed, eggMass, deaths, quality).associateBy { it.id }
 }

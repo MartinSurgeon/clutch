@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -105,8 +106,10 @@ object ClutchDimens {
     val ScreenPadding = 16.dp
     val SectionGap = 20.dp
     val CardPadding = 16.dp
-    val CardRadius = 16.dp
+    val CardRadius = 20.dp
     val ContentMaxWidth = 640.dp
+    val WideContentMaxWidth = 1100.dp
+    val TwoPaneMinWidth = 760.dp
     val TouchTarget = 56.dp
 }
 
@@ -184,6 +187,7 @@ fun EggYolkLogo(
 fun ScreenColumn(
     modifier: Modifier = Modifier,
     testTag: String,
+    maxContentWidth: Dp = ClutchDimens.ContentMaxWidth,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -194,7 +198,7 @@ fun ScreenColumn(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = ClutchDimens.ContentMaxWidth)
+                .widthIn(max = maxContentWidth)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = ClutchDimens.ScreenPadding, vertical = ClutchDimens.ScreenPadding),
@@ -260,7 +264,7 @@ fun ClutchCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     containerColor: Color = MaterialTheme.colorScheme.surface,
-    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    borderColor: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
     contentPadding: Dp = ClutchDimens.CardPadding,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -268,6 +272,12 @@ fun ClutchCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 6.dp,
+                shape = shape,
+                ambientColor = Color.Black.copy(alpha = 0.04f),
+                spotColor = Color.Black.copy(alpha = 0.08f)
+            )
             .clip(shape)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
         shape = shape,
@@ -346,10 +356,11 @@ fun rememberStatusVisuals(state: LayerCalc.TargetState): StatusVisuals {
 @Composable
 fun StatusChip(
     state: LayerCalc.TargetState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    label: String? = null
 ) {
     if (state == LayerCalc.TargetState.NOT_APPLICABLE) return
-    val visuals = rememberStatusVisuals(state)
+    val visuals = rememberStatusVisuals(state).let { if (label != null) it.copy(label = label) else it }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(50),
@@ -502,43 +513,71 @@ fun StatTile(
     testTag: String = "stat_tile"
 ) {
     ClutchCard(
-        modifier = modifier.testTag(testTag),
+        modifier = modifier
+            .heightIn(min = 132.dp)
+            .testTag(testTag),
         onClick = onClick,
         contentPadding = 14.dp
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp)
-            )
+            IconBadge(icon = icon, size = 30.dp)
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
         }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.headlineSmall.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (status != null && status != LayerCalc.TargetState.NOT_APPLICABLE) {
+            StatusDot(state = status)
+        } else {
             Text(
                 text = caption,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
             )
         }
-        if (status != null && status != LayerCalc.TargetState.NOT_APPLICABLE) {
-            StatusChip(state = status)
-        }
+    }
+}
+
+/**
+ * Quiet status marker — a coloured dot plus the word (never colour alone). Used inside
+ * dense grids where a full chip would be visual noise.
+ */
+@Composable
+fun StatusDot(
+    state: LayerCalc.TargetState,
+    modifier: Modifier = Modifier
+) {
+    if (state == LayerCalc.TargetState.NOT_APPLICABLE) return
+    val visuals = rememberStatusVisuals(state)
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(visuals.borderColor, CircleShape)
+        )
+        Text(
+            text = visuals.label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = visuals.textColor
+        )
     }
 }
 
