@@ -78,6 +78,14 @@ class SyncManager(
         syncNow()
     }
 
+    /** Deletes the account and its backup on the server. Records on this phone stay. */
+    suspend fun deleteAccount(password: String) {
+        val token = prefs.authToken ?: return
+        api.deleteAccount(token, password)
+        prefs.clearAccount()
+        _status.value = readStatus()
+    }
+
     suspend fun signOut() {
         prefs.authToken?.let { token -> runCatching { api.logout(token) } }
         prefs.clearAccount()

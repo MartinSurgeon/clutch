@@ -4,8 +4,10 @@
 -- updated_at        = when the farmer changed the row (phone clock, ms) — used for last-write-wins
 -- server_updated_at = when the server stored it (server clock, ms)       — used as the pull cursor
 
-CREATE DATABASE IF NOT EXISTS clutch CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE clutch;
+-- Import into an EXISTING database:
+--   cPanel: create it in "MySQL Databases", then phpMyAdmin → select it → Import this file.
+--   XAMPP:  mysql -u root -e "CREATE DATABASE IF NOT EXISTS clutch CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+--           mysql -u root clutch < schema.sql
 
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

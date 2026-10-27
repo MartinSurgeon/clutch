@@ -73,6 +73,7 @@ fun AccountScreen(
 private fun SignedInView(viewModel: ClutchViewModel) {
     val sync by viewModel.syncStatus.collectAsState()
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     ScreenTitle(title = "Backup", subtitle = "Your records are saved to your account")
 
@@ -124,6 +125,20 @@ private fun SignedInView(viewModel: ClutchViewModel) {
         testTag = "sign_out"
     )
 
+    // Destructive and rare: kept small and last, never next to the main action
+    TextButton(
+        onClick = { confirmDelete = true },
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("delete_account")
+    ) {
+        Text("Delete my account", color = MaterialTheme.colorScheme.error)
+    }
+
+    if (confirmDelete) {
+        DeleteAccountDialog(viewModel = viewModel, onDismiss = { confirmDelete = false })
+    }
+
     if (confirmSignOut) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
@@ -139,6 +154,58 @@ private fun SignedInView(viewModel: ClutchViewModel) {
             dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Stay signed in") } }
         )
     }
+}
+
+@Composable
+private fun DeleteAccountDialog(viewModel: ClutchViewModel, onDismiss: () -> Unit) {
+    var password by rememberSaveable { mutableStateOf("") }
+    var busy by rememberSaveable { mutableStateOf(false) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        icon = { Icon(ClutchIcons.Delete, contentDescription = null, modifier = Modifier.size(22.dp)) },
+        title = { Text("Delete your account?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "This permanently deletes your account and every record backed up to it. " +
+                        "It cannot be undone. Records on this phone stay."
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it.take(64) },
+                    label = { Text("Your password") },
+                    singleLine = true,
+                    isError = error != null,
+                    supportingText = { error?.let { Text(it) } },
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_delete_password")
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = password.isNotEmpty() && !busy,
+                onClick = {
+                    busy = true
+                    error = null
+                    scope.launch {
+                        viewModel.deleteAccount(password)
+                            .onSuccess { onDismiss() }
+                            .onFailure { error = it.message ?: "Could not delete the account. Please try again." }
+                        busy = false
+                    }
+                },
+                modifier = Modifier.testTag("confirm_delete_account")
+            ) { Text(if (busy) "Deleting…" else "Delete for ever", color = MaterialTheme.colorScheme.error) }
+        },
+        dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Keep my account") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -31,6 +31,21 @@ set_exception_handler(function (Throwable $e): void {
     echo json_encode(['error' => ['code' => 'server_error', 'message' => 'Something went wrong on the server. Please try again.']]);
 });
 
+// Some shared hosts ship PHP without mbstring; these fallbacks keep the API working anyway.
+if (!function_exists('mb_strlen')) {
+    function mb_strlen(string $s): int
+    {
+        return (int) preg_match_all('/./us', $s);
+    }
+}
+if (!function_exists('mb_substr')) {
+    function mb_substr(string $s, int $start, ?int $length = null): string
+    {
+        $chars = preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        return implode('', array_slice($chars, $start, $length));
+    }
+}
+
 function config(): array
 {
     static $config = null;
@@ -118,11 +133,17 @@ function issue_token(int $userId, string $deviceName): string
 
 function bearer_token(): ?string
 {
+    // Many cPanel / PHP-FPM / LiteSpeed hosts drop the Authorization header, so the app also
+    // sends the token as X-Clutch-Token. Either one is accepted.
     $header = $_SERVER['HTTP_AUTHORIZATION']
         ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
-        ?? (function_exists('getallheaders') ? (getallheaders()['Authorization'] ?? null) : null);
+        ?? (function_exists('getallheaders') ? (array_change_key_case(getallheaders())['authorization'] ?? null) : null);
     if (is_string($header) && preg_match('/^Bearer\s+([a-f0-9]{64})$/i', trim($header), $m)) {
         return strtolower($m[1]);
+    }
+    $fallback = $_SERVER['HTTP_X_CLUTCH_TOKEN'] ?? null;
+    if (is_string($fallback) && preg_match('/^[a-f0-9]{64}$/i', trim($fallback))) {
+        return strtolower(trim($fallback));
     }
     return null;
 }

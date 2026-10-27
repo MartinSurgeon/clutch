@@ -22,13 +22,17 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // Clutch backup server. Override in local.properties, e.g.
-    //   clutch.apiUrl=https://your-domain.com/clutch/backend/api
+    // Clutch backup server, first match wins:
+    //   1. local.properties  clutch.apiUrl=...   (this computer only, e.g. a test server on Wi-Fi)
+    //   2. gradle.properties clutchApiUrl=...    (committed: the live server used by every build)
+    //   3. the emulator's view of a local XAMPP server
     val localProps = Properties().apply {
       val file = rootProject.file("local.properties")
       if (file.exists()) file.inputStream().use { load(it) }
     }
-    val apiUrl = localProps.getProperty("clutch.apiUrl") ?: "http://10.0.2.2/clutch/backend/api"
+    val apiUrl = localProps.getProperty("clutch.apiUrl")
+      ?: (project.findProperty("clutchApiUrl") as String?)
+      ?: "http://10.0.2.2/clutch/backend/api"
     buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
   }
 

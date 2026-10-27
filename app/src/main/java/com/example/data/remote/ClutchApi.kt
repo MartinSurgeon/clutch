@@ -43,6 +43,11 @@ class ClutchApi(private val baseUrl: () -> String) {
         request("POST", "logout.php", JSONObject(), token)
     }
 
+    /** Permanently deletes the account and its backup on the server. */
+    suspend fun deleteAccount(token: String, password: String) {
+        request("POST", "delete_account.php", JSONObject().put("password", password), token)
+    }
+
     suspend fun sync(token: String, since: Long, changes: Map<String, List<JSONObject>>): SyncResponse {
         val changesJson = JSONObject()
         changes.forEach { (key, rows) -> changesJson.put(key, JSONArray(rows)) }
@@ -85,7 +90,11 @@ class ClutchApi(private val baseUrl: () -> String) {
                 readTimeout = 60_000
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
                 setRequestProperty("Accept", "application/json")
-                token?.let { setRequestProperty("Authorization", "Bearer $it") }
+                token?.let {
+                    setRequestProperty("Authorization", "Bearer $it")
+                    // Many shared hosts (cPanel, LiteSpeed) drop Authorization; the server accepts this too
+                    setRequestProperty("X-Clutch-Token", it)
+                }
                 if (body != null) doOutput = true
             }
             try {

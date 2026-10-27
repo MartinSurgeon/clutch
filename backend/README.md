@@ -3,7 +3,7 @@
 Small JSON API that lets the Clutch app back up a farmer's records and restore them on a new phone.
 Plain PHP 8.1+ with PDO — no framework, no Composer.
 
-## What it does
+## Endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
@@ -12,8 +12,11 @@ Plain PHP 8.1+ with PDO — no framework, no Composer.
 | `api/logout.php` | POST | Sign this phone out (token revoked) |
 | `api/me.php` | GET | Who am I + how many records are backed up |
 | `api/sync.php` | POST | Push this phone's changes and pull everything newer, in one call |
+| `api/delete_account.php` | POST | Delete the account and its backup (password required; Google Play rule) |
+| `api/health.php` | GET | Open in a browser after deploying: checks PHP, database and tables |
 
-Signed-in calls send `Authorization: Bearer <token>`. Tokens are random 64-hex strings; only their SHA-256 is stored.
+Signed-in calls send `Authorization: Bearer <token>` and the same token as `X-Clutch-Token`
+(many cPanel hosts drop `Authorization`). Tokens are random 64-hex strings; only their SHA-256 is stored.
 
 ### How sync works
 - Each row keeps the same id on every phone and on the server.
@@ -21,15 +24,22 @@ Signed-in calls send `Authorization: Bearer <token>`. Tokens are random 64-hex s
 - The server stamps every stored row with `server_updated_at`; phones pull "everything after my cursor", page by page (`more: true`).
 - A push older than the server copy is ignored and the server copy is sent back.
 
+## Deploy
+
+- **Namecheap / cPanel:** follow [DEPLOY-CPANEL.md](DEPLOY-CPANEL.md) step by step.
+- Any other host: PHP 8.1+ with `pdo_mysql`, MySQL 5.7+ / MariaDB 10.3+, HTTPS. Import `schema.sql` into an
+  existing database, create `config.local.php` from `config.local.php.example`, and serve only the `api/` folder.
+
 ## Run it locally (XAMPP)
 
 1. Start **Apache** and **MySQL** in the XAMPP control panel.
-2. Create the database:
+2. Create the database and tables (Command Prompt, in the project folder):
    ```
-   C:\xampp\mysql\bin\mysql.exe -u root < backend\schema.sql
+   C:\xampp\mysql\bin\mysql.exe -u root -e "CREATE DATABASE IF NOT EXISTS clutch CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+   C:\xampp\mysql\bin\mysql.exe -u root clutch < backend\schema.sql
    ```
-3. The API is now at `http://localhost/clutch/backend/api/`.
-4. Run the end-to-end test (creates and deletes a throwaway account):
+3. Open `http://localhost/clutch/backend/api/health.php` — it should say `"ok": true`.
+4. Run the end-to-end test (creates a throwaway account and deletes it through the API):
    ```
    C:\xampp\php\php.exe backend\tests\api_test.php
    ```
@@ -40,22 +50,8 @@ Signed-in calls send `Authorization: Bearer <token>`. Tokens are random 64-hex s
 - Debug builds also have a **Server address** field on the Backup screen.
 - If the phone cannot connect, allow **Apache HTTP Server** through Windows Defender Firewall (Private networks).
 
-## Deploy to a server
-
-1. Upload the `backend/` folder (PHP 8.1+, MySQL 5.7+ / MariaDB 10.3+).
-2. Import `schema.sql`.
-3. Set credentials with environment variables (`CLUTCH_DB_HOST`, `CLUTCH_DB_PORT`, `CLUTCH_DB_NAME`, `CLUTCH_DB_USER`, `CLUTCH_DB_PASS`)
-   **or** create `config.local.php` (git-ignored):
-   ```php
-   <?php return ['db_user' => 'clutch', 'db_pass' => 'a-strong-password'];
-   ```
-4. **Use HTTPS.** Release builds of the app refuse plain HTTP.
-5. Make sure `.htaccess` files are honoured (`AllowOverride All`) so `config.php`, `lib/` and `tests/` are not downloadable.
-   On Nginx, deny those paths in the server block and pass the `Authorization` header to PHP.
-6. Build the app with `clutch.apiUrl=https://your-domain/clutch/backend/api` in `local.properties`.
-
 ## Security notes
 - Passwords: `password_hash()` (bcrypt), re-hashed automatically when PHP's default changes.
 - All SQL uses prepared statements; every synced field is type- and length-checked.
 - Each account only ever reads and writes its own rows (`user_id` is part of every key).
-- Not included yet: password reset by SMS, account deletion endpoint, sharing one farm between several accounts.
+- Not included yet: password reset by SMS, sharing one farm between several accounts.

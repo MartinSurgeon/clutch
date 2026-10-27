@@ -133,5 +133,12 @@ class SyncIntegrationTest {
         b.sync.signOut()
         assertTrue(!b.sync.status.value.signedIn)
         assertNotNull(b.dao.getFlockById("pen_it"))
+
+        // Delete account (Google Play requirement): server copy gone, phone copy kept
+        a.sync.deleteAccount("secret12")
+        assertTrue(!a.sync.status.value.signedIn)
+        assertNotNull(a.dao.getFlockById("pen_it"))
+        val relogin = runCatching { b.sync.login(phoneNumber, "secret12") }
+        assertTrue("deleted account cannot sign in", relogin.isFailure)
     }
 }

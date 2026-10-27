@@ -145,6 +145,10 @@ class ClutchViewModel(
         runCatching { syncManager!!.login(phone, password) }
             .onSuccess { _snackbarEvents.tryEmit("Signed in. Your records are up to date.") }
 
+    suspend fun deleteAccount(password: String): Result<Unit> =
+        runCatching { syncManager!!.deleteAccount(password) }
+            .onSuccess { _snackbarEvents.tryEmit("Account deleted. Your records stay on this phone.") }
+
     fun signOut() {
         viewModelScope.launch {
             syncManager?.signOut()

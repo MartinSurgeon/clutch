@@ -3,7 +3,8 @@
  * End-to-end API test against a running server.
  * Run:  php backend/tests/api_test.php [base_url]
  * Default base_url: http://localhost/clutch/backend/api
- * Creates a throwaway account and deletes it afterwards.
+ * Live server example: php backend/tests/api_test.php https://api.yourdomain.com
+ * Creates a throwaway account and deletes it afterwards through the API (safe on production).
  */
 
 declare(strict_types=1);
@@ -12,11 +13,12 @@ $base = rtrim($argv[1] ?? 'http://localhost/clutch/backend/api', '/');
 $failures = 0;
 $passes = 0;
 
-function call(string $method, string $url, ?array $body = null, ?string $token = null): array
+function call(string $method, string $url, ?array $body = null, ?string $token = null, bool $tokenHeaderOnly = false): array
 {
     $ch = curl_init($url);
     $headers = ['Content-Type: application/json'];
-    if ($token) $headers[] = "Authorization: Bearer $token";
+    if ($token && !$tokenHeaderOnly) $headers[] = "Authorization: Bearer $token";
+    if ($token && $tokenHeaderOnly) $headers[] = "X-Clutch-Token: $token";
     curl_setopt_array($ch, [
         CURLOPT_CUSTOMREQUEST => $method,
         CURLOPT_RETURNTRANSFER => true,
@@ -47,6 +49,17 @@ $t0 = 1_700_000_000_000;
 
 echo "Clutch API test → $base ($phoneLocal)\n";
 
+// --- Server ready? ---
+[$s, $r] = call('GET', "$base/health.php");
+check('health check passes', $s === 200 && ($r['ok'] ?? false) === true, [$s, $r]);
+if ($s !== 200) {
+    echo "\nServer is not ready: " . json_encode($r) . "\n";
+    exit(1);
+}
+if (!($r['checks']['https'] ?? false)) {
+    echo "  note not served over HTTPS (fine for local testing only)\n";
+}
+
 // --- Accounts ---
 [$s, $r] = call('POST', "$base/register.php", ['phone' => $phoneLocal, 'name' => 'Test Farmer', 'password' => 'pass123', 'device' => 'Test phone A']);
 check('register creates account', $s === 201 && strlen($r['token'] ?? '') === 64 && ($r['user']['phone'] ?? '') === $phoneCanonical, [$s, $r]);
@@ -73,6 +86,9 @@ check('no token is refused', $s === 401, $s);
 
 [$s, $r] = call('GET', "$base/me.php", null, $tokenA);
 check('me shows empty counts', $s === 200 && ($r['counts']['dailyRecords'] ?? -1) === 0, [$s, $r]);
+
+[$s] = call('GET', "$base/me.php", null, $tokenA, tokenHeaderOnly: true);
+check('token also works via X-Clutch-Token (hosts that drop Authorization)', $s === 200, $s);
 
 // --- Sync: phone A pushes ---
 $flock = ['id' => 'flock_1', 'name' => 'Pen A', 'breed' => 'Lohmann Brown', 'hensHoused' => 500, 'placedDate' => '2026-07-01',
@@ -139,15 +155,22 @@ for ($i = 0; $i < 6; $i++) {
 }
 check('too many wrong passwords are slowed down', $last === 429, $last);
 
-// --- Private files are not served ---
-[$s] = call('GET', preg_replace('#/api$#', '/config.php', $base));
-check('config.php is not downloadable', $s === 403, $s);
+// --- Private files are not served (only checkable when the whole backend folder is public) ---
+if (str_ends_with($base, '/api')) {
+    [$s] = call('GET', preg_replace('#/api$#', '/config.php', $base));
+    check('config.php is not downloadable', $s === 403 || $s === 404, $s);
+} else {
+    echo "  skip config.php check (API folder is the web root, so config.php is outside it)\n";
+}
 
-// --- Clean up the throwaway account ---
-$config = require __DIR__ . '/../config.php';
-$pdo = new PDO("mysql:host={$config['db_host']};port={$config['db_port']};dbname={$config['db_name']}", $config['db_user'], $config['db_pass']);
-$pdo->prepare('DELETE FROM users WHERE phone = ?')->execute([$phoneCanonical]);
-$pdo->prepare('DELETE FROM login_attempts WHERE phone = ?')->execute([$phoneCanonical]);
+// --- Delete the throwaway account through the API ---
+[$s] = call('POST', "$base/delete_account.php", ['password' => 'wrong!!'], $tokenA);
+check('delete account needs the right password', $s === 403, $s);
+[$s] = call('POST', "$base/delete_account.php", ['password' => 'pass123'], $tokenA);
+[$s2] = call('GET', "$base/me.php", null, $tokenA);
+check('delete account removes it', $s === 200 && $s2 === 401, [$s, $s2]);
+[$s] = call('POST', "$base/login.php", ['phone' => $phoneLocal, 'password' => 'pass123']);
+check('deleted account cannot sign in', $s === 401 || $s === 429, $s);
 
 echo "\n$passes passed, $failures failed\n";
 exit($failures === 0 ? 0 : 1);

@@ -1,0 +1,17 @@
+<?php
+/**
+ * Copy this file to config.local.php (same folder) and fill in your cPanel database details.
+ * cPanel adds your account name in front of database and user names, e.g.
+ *   database  "clutch"     becomes  "abcdxyz_clutch"
+ *   user      "clutchapi"  becomes  "abcdxyz_clutchapi"
+ * Copy the full names exactly as cPanel shows them under "MySQL Databases".
+ * config.local.php is never committed to git and never served to the web.
+ */
+
+return [
+    'db_host' => 'localhost',
+    'db_port' => 3306,
+    'db_name' => 'CPANELUSER_clutch',
+    'db_user' => 'CPANELUSER_clutchapi',
+    'db_pass' => 'PASTE-THE-DATABASE-USER-PASSWORD-HERE',
+];

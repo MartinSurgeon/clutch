@@ -1,0 +1,8 @@
+# Pass the Authorization header through to PHP (many cPanel / LiteSpeed hosts drop it).
+# The app also sends X-Clutch-Token, so sign-in keeps working even if this is ignored.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
