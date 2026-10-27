@@ -1,6 +1,9 @@
 # Used when the whole backend folder is inside public_html.
 # (Best: point a subdomain's document root at api/ so nothing else is reachable at all.)
 
+# No folder listings
+Options -Indexes
+
 # Pass the Authorization header through to PHP (many hosts drop it)
 <IfModule mod_rewrite.c>
     RewriteEngine On

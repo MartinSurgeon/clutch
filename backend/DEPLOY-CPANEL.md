@@ -117,6 +117,8 @@ Send the address `https://api.YOURDOMAIN.com` to the developer (or set it yourse
 
 - **Sync fails with "Not Acceptable" or 403 on save:** Namecheap's ModSecurity firewall sometimes blocks
   form-like content. Ask Namecheap support to whitelist `api.YOURDOMAIN.com` for ModSecurity.
+- **Opening a folder in the browser shows a list of files:** cPanel → **Advanced** → **Indexes** → open the
+  domain's folder → **No Indexing** → **Save**. Also delete any `clutch_backend.zip` left on the server.
 - **Everyone is suddenly signed out:** check that `config.local.php` was not changed or deleted.
 - **Backups:** cPanel → **Backup** → download a **MySQL database backup** of `CPANELUSER_clutch` regularly
   (or use Namecheap's automatic backups).
