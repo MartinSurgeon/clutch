@@ -20,6 +20,8 @@ object ReferenceTargets {
         val group: Group,
         val title: String,
         val subtitle: String,
+        /** The one number to remember, shown before the group is opened. */
+        val headline: String,
         val rows: List<TargetRow>
     )
 
@@ -34,6 +36,7 @@ object ReferenceTargets {
             group = Group.PRODUCTION,
             title = "Production",
             subtitle = "Laying %, also called hen-day %",
+            headline = "85–95% at peak",
             rows = listOf(
                 TargetRow("18–24 weeks", "Rising fast", "Birds come into lay. Laying % climbs every week."),
                 TargetRow("25–35 weeks (peak)", "85–95%", "Under 80% at peak needs attention."),
@@ -45,6 +48,7 @@ object ReferenceTargets {
             group = Group.FEED,
             title = "Feed and water",
             subtitle = "Per bird, per day",
+            headline = "110–125 g feed",
             rows = listOf(
                 TargetRow("Feed per bird", "110–125 g", "100–110 g or 125–130 g, watch it."),
                 TargetRow("Feed for 1 kg of eggs (FCR)", "2.0–2.2 kg", "Over 2.4 needs attention. Not rated before 24 weeks."),
@@ -55,6 +59,7 @@ object ReferenceTargets {
             group = Group.EGG_WEIGHT,
             title = "Egg weight",
             subtitle = "Weigh 30 eggs once a week",
+            headline = "55–65 g",
             rows = listOf(
                 TargetRow("Average egg weight", "55–65 g", "From 30 weeks. Young birds lay smaller eggs first."),
                 TargetRow("Egg mass per bird", "55 g or more", "From 25 weeks. Laying % × egg weight.")
@@ -64,6 +69,7 @@ object ReferenceTargets {
             group = Group.QUALITY,
             title = "Egg quality",
             subtitle = "Out of every 100 eggs picked",
+            headline = "4% bad or less",
             rows = listOf(
                 TargetRow("Cracked", "2% or less"),
                 TargetRow("Dirty", "3% or less"),
@@ -75,6 +81,7 @@ object ReferenceTargets {
             group = Group.UNIFORMITY,
             title = "Uniformity and body weight",
             subtitle = "Weigh 50–100 birds every 1–2 weeks",
+            headline = "80%+ even",
             rows = listOf(
                 TargetRow("Uniformity", "80% or more", "Birds within 10% of the average weight. 70–80%, watch it."),
                 TargetRow("Body weight", "Follow your breed guide", "Brown layers in lay are often about 1.8–2.1 kg.")
@@ -84,6 +91,7 @@ object ReferenceTargets {
             group = Group.MORTALITY,
             title = "Deaths",
             subtitle = "Check every week, not just every day",
+            headline = "Under 0.1% a week",
             rows = listOf(
                 TargetRow("Deaths in a week", "Under 0.1%", "0.1–0.5%, watch it. Over 0.5% needs attention now."),
                 TargetRow("Total up to peak", "Under 3%"),

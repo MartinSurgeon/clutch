@@ -1,7 +1,10 @@
 package com.example.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -52,10 +55,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -68,9 +69,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.domain.LayerCalc
-import com.example.ui.theme.EggShellCream
-import com.example.ui.theme.EggYolkAmber
-import com.example.ui.theme.EggYolkHighlight
 import com.example.ui.theme.BrandDeepGreen
 import com.example.ui.theme.ClutchIcons
 import com.example.ui.theme.StatusAmberBgDark
@@ -114,69 +112,20 @@ object ClutchDimens {
 }
 
 /**
- * Small egg-yolk logo used in the top app bar and first-run empty state.
+ * The Clutch app icon artwork, used in the top bar and on the welcome screens.
  */
 @Composable
-fun EggYolkLogo(
+fun ClutchLogo(
     size: Dp = 32.dp,
     modifier: Modifier = Modifier
 ) {
-    Canvas(
+    Image(
+        painter = painterResource(id = R.drawable.clutch_logo),
+        contentDescription = "Clutch",
         modifier = modifier
             .size(size)
-            .semantics { contentDescription = "Clutch logo" }
-    ) {
-        val w = this.size.width
-        val h = this.size.height
-
-        // Deep ledger-blue rounded badge
-        drawCircle(
-            color = BrandDeepGreen,
-            radius = w * 0.48f,
-            center = Offset(w * 0.5f, h * 0.5f)
-        )
-
-        // Egg shell silhouette
-        val eggPath = Path().apply {
-            moveTo(w * 0.5f, h * 0.16f)
-            cubicTo(
-                w * 0.30f, h * 0.16f,
-                w * 0.22f, h * 0.44f,
-                w * 0.22f, h * 0.60f
-            )
-            cubicTo(
-                w * 0.22f, h * 0.76f,
-                w * 0.34f, h * 0.85f,
-                w * 0.5f, h * 0.85f
-            )
-            cubicTo(
-                w * 0.66f, h * 0.85f,
-                w * 0.78f, h * 0.76f,
-                w * 0.78f, h * 0.60f
-            )
-            cubicTo(
-                w * 0.78f, h * 0.44f,
-                w * 0.70f, h * 0.16f,
-                w * 0.5f, h * 0.16f
-            )
-            close()
-        }
-        drawPath(path = eggPath, color = EggShellCream)
-
-        // Warm egg yolk center
-        drawCircle(
-            color = EggYolkAmber,
-            radius = w * 0.16f,
-            center = Offset(w * 0.5f, h * 0.59f)
-        )
-
-        // Yolk specular highlight
-        drawCircle(
-            color = EggYolkHighlight,
-            radius = w * 0.05f,
-            center = Offset(w * 0.45f, h * 0.54f)
-        )
-    }
+            .clip(RoundedCornerShape(size * 0.22f))
+    )
 }
 
 /**
@@ -901,50 +850,43 @@ fun MetricRowItem(
 }
 
 /**
- * "Things to check" section for the Home screen:
- * - Most severe first, at most 3 shown with "See all" for the rest (Miller's Law);
- * - Each one says what to do;
- * - If nothing fires, one calm "All is well" card.
+ * "Things to check" — one calm card instead of a wall of coloured boxes:
+ * - each warning is a single scannable row (icon + word + title), most urgent first;
+ * - tap a row to open "What to do" (progressive disclosure, Tesler's Law);
+ * - at most 3 rows until the farmer asks for more (Miller's Law);
+ * - severity is shown by icon, word and colour together — never colour alone.
  */
 @Composable
 fun WarningsSectionCard(
     warnings: List<LayerCalc.WarningItem>,
     modifier: Modifier = Modifier
 ) {
-    val dark = isSystemInDarkTheme()
     var showAll by rememberSaveable { mutableStateOf(false) }
+    var openId by rememberSaveable { mutableStateOf<String?>(null) }
 
     if (warnings.isEmpty()) {
-        val bg = if (dark) StatusGreenBgDark else StatusGreenBgLight
-        val border = if (dark) StatusGreenBorderDark else StatusGreenBorderLight
-        val fg = if (dark) StatusGreenTextDark else StatusGreenTextLight
-
-        ClutchCard(
-            modifier = modifier.testTag("all_clear_card"),
-            containerColor = bg,
-            borderColor = border
-        ) {
+        val dark = isSystemInDarkTheme()
+        ClutchCard(modifier = modifier.testTag("all_clear_card"), contentPadding = 14.dp) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = ClutchIcons.Good,
-                    contentDescription = null,
-                    tint = fg,
-                    modifier = Modifier.size(28.dp)
+                IconBadge(
+                    icon = ClutchIcons.Good,
+                    size = 36.dp,
+                    containerColor = if (dark) StatusGreenBgDark else StatusGreenBgLight,
+                    contentColor = if (dark) StatusGreenTextDark else StatusGreenTextLight
                 )
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "All is well",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = fg
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Laying, feed, water, deaths and egg quality all look normal.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = fg
+                        text = "Laying, feed, water, deaths and egg quality look normal.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -953,7 +895,8 @@ fun WarningsSectionCard(
     }
 
     val maxVisible = 3
-    val visibleWarnings = if (showAll || warnings.size <= maxVisible) warnings else warnings.take(maxVisible)
+    val visible = if (showAll || warnings.size <= maxVisible) warnings else warnings.take(maxVisible)
+    val urgent = warnings.count { it.severity != LayerCalc.WarningSeverity.WARNING }
 
     Column(
         modifier = modifier
@@ -962,97 +905,138 @@ fun WarningsSectionCard(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         SectionHeader(
-            title = "Things to check (${warnings.size})",
-            subtitle = "Most urgent first",
+            title = "Things to check",
+            subtitle = when {
+                urgent > 0 -> "$urgent need action soon • tap one to see what to do"
+                else -> "Nothing urgent • tap one to see what to do"
+            },
             actionLabel = if (warnings.size > maxVisible) {
-                if (showAll) "Show less" else "See all"
+                if (showAll) "Show less" else "See all ${warnings.size}"
             } else null,
             onAction = { showAll = !showAll },
             modifier = Modifier.testTag("warnings_show_all_button")
         )
-        visibleWarnings.forEach { warning ->
-            WarningItemBlock(warning = warning)
+        ClutchCard(contentPadding = 0.dp) {
+            Column {
+                visible.forEachIndexed { index, warning ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            modifier = Modifier.padding(start = 64.dp)
+                        )
+                    }
+                    WarningRow(
+                        warning = warning,
+                        expanded = openId == warning.id,
+                        onToggle = { openId = if (openId == warning.id) null else warning.id }
+                    )
+                }
+            }
         }
     }
 }
 
-@Composable
-fun WarningItemBlock(
-    warning: LayerCalc.WarningItem,
-    modifier: Modifier = Modifier
-) {
-    val dark = isSystemInDarkTheme()
-    val bgColor: Color
-    val borderColor: Color
-    val textColor: Color
-    val iconVec: ImageVector
-    when (warning.severity) {
-        LayerCalc.WarningSeverity.CRITICAL -> {
-            bgColor = if (dark) StatusRedBgDark else StatusRedBgLight
-            borderColor = if (dark) StatusRedBorderDark else StatusRedBorderLight
-            textColor = if (dark) StatusRedTextDark else StatusRedTextLight
-            iconVec = ClutchIcons.Critical
-        }
-        LayerCalc.WarningSeverity.SERIOUS -> {
-            bgColor = if (dark) StatusOrangeBgDark else StatusOrangeBgLight
-            borderColor = if (dark) StatusOrangeBorderDark else StatusOrangeBorderLight
-            textColor = if (dark) StatusOrangeTextDark else StatusOrangeTextLight
-            iconVec = ClutchIcons.Warning
-        }
-        LayerCalc.WarningSeverity.WARNING -> {
-            bgColor = if (dark) StatusAmberBgDark else StatusAmberBgLight
-            borderColor = if (dark) StatusAmberBorderDark else StatusAmberBorderLight
-            textColor = if (dark) StatusAmberTextDark else StatusAmberTextLight
-            iconVec = ClutchIcons.Warning
-        }
-    }
+private data class SeverityVisuals(val icon: ImageVector, val bg: Color, val fg: Color, val accent: Color)
 
-    Surface(
-        modifier = modifier
+@Composable
+private fun severityVisuals(severity: LayerCalc.WarningSeverity): SeverityVisuals {
+    val dark = isSystemInDarkTheme()
+    return when (severity) {
+        LayerCalc.WarningSeverity.CRITICAL -> SeverityVisuals(
+            ClutchIcons.Critical,
+            if (dark) StatusRedBgDark else StatusRedBgLight,
+            if (dark) StatusRedTextDark else StatusRedTextLight,
+            if (dark) StatusRedBorderDark else StatusRedBorderLight
+        )
+        LayerCalc.WarningSeverity.SERIOUS -> SeverityVisuals(
+            ClutchIcons.Warning,
+            if (dark) StatusOrangeBgDark else StatusOrangeBgLight,
+            if (dark) StatusOrangeTextDark else StatusOrangeTextLight,
+            if (dark) StatusOrangeBorderDark else StatusOrangeBorderLight
+        )
+        LayerCalc.WarningSeverity.WARNING -> SeverityVisuals(
+            ClutchIcons.Info,
+            if (dark) StatusAmberBgDark else StatusAmberBgLight,
+            if (dark) StatusAmberTextDark else StatusAmberTextLight,
+            if (dark) StatusAmberBorderDark else StatusAmberBorderLight
+        )
+    }
+}
+
+@Composable
+private fun WarningRow(
+    warning: LayerCalc.WarningItem,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    val v = severityVisuals(warning.severity)
+    Column(
+        modifier = Modifier
             .fillMaxWidth()
-            .testTag("warning_item_${warning.id}"),
-        shape = RoundedCornerShape(ClutchDimens.CardRadius),
-        color = bgColor,
-        border = BorderStroke(1.dp, borderColor)
+            .clickable(role = Role.Button, onClick = onToggle)
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .testTag("warning_item_${warning.id}")
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = iconVec,
-                    contentDescription = null,
-                    tint = textColor,
-                    modifier = Modifier.size(18.dp)
-                )
+            IconBadge(icon = v.icon, size = 36.dp, containerColor = v.bg, contentColor = v.fg)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = warning.severity.label.uppercase(),
+                    text = warning.severity.label,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = textColor
+                    color = v.fg
+                )
+                Text(
+                    text = warning.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = if (expanded) Int.MAX_VALUE else 2
                 )
             }
-            Text(
-                text = warning.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = textColor
+            Icon(
+                imageVector = if (expanded) ClutchIcons.ChevronUp else ClutchIcons.ChevronDown,
+                contentDescription = if (expanded) "Hide what to do" else "Show what to do",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(12.dp)
             )
-            Text(
-                text = warning.detail,
-                style = MaterialTheme.typography.bodyMedium,
-                color = textColor
-            )
-            Text(
-                text = "What to do: ${warning.whatToCheck}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = textColor
-            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier.padding(start = 50.dp, top = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = warning.detail,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = v.bg,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = ClutchIcons.Tip,
+                            contentDescription = null,
+                            tint = v.fg,
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(14.dp)
+                        )
+                        Column {
+                            Text(text = "What to do", style = MaterialTheme.typography.labelLarge, color = v.fg)
+                            Text(text = warning.whatToCheck, style = MaterialTheme.typography.bodyMedium, color = v.fg)
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -62,13 +62,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.ui.components.EggYolkLogo
+import com.example.ui.components.ClutchLogo
 import com.example.ui.components.ExampleDataBanner
 import com.example.ui.components.LoadingState
 import com.example.ui.screens.DailyScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.GuideScreen
+import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.RecordScreen
 import com.example.ui.screens.WeeklyScreen
 import com.example.ui.theme.ClutchIcons
@@ -83,6 +84,9 @@ const val ROUTE_GUIDE = "guide"
 // Sub-screens (opened on top of a tab, with a back arrow)
 const val ROUTE_RECORD = "record"
 const val ROUTE_PENS = "pens"
+
+private const val PREFS_NAME = "clutch_prefs"
+private const val KEY_ONBOARDING_DONE = "onboarding_done"
 
 /** Screens wider than this get a side rail instead of a bottom bar (tablets, foldables, landscape). */
 private const val WIDE_LAYOUT_MIN_DP = 600
@@ -118,6 +122,11 @@ fun ClutchApp(
 
     var openAddPenSheet by rememberSaveable { mutableStateOf(false) }
 
+    // First-launch welcome screens, shown once
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var onboardingDone by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_ONBOARDING_DONE, false)) }
+    var openAddPenAfterOnboarding by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(viewModel) {
         viewModel.snackbarEvents.collect { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -146,6 +155,17 @@ fun ClutchApp(
 
     fun goBack() {
         if (!navController.popBackStack()) navigateToTab(ROUTE_DASHBOARD)
+    }
+
+    if (!uiState.isLoading && !onboardingDone && uiState.flocks.isEmpty()) {
+        OnboardingScreen(
+            onGetStarted = {
+                prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
+                onboardingDone = true
+                openAddPenAfterOnboarding = true
+            }
+        )
+        return
     }
 
     Scaffold(
@@ -259,6 +279,13 @@ fun ClutchApp(
                         openAddPenSheet = openAddPenSheet,
                         onAddPenSheetConsumed = { openAddPenSheet = false }
                     )
+                    // "Get started" goes straight to adding the first pen (one less tap)
+                    LaunchedEffect(openAddPenAfterOnboarding) {
+                        if (openAddPenAfterOnboarding) {
+                            openAddPenAfterOnboarding = false
+                            openPens(addNew = true)
+                        }
+                    }
                 }
             }
         }
@@ -286,7 +313,6 @@ private fun ClutchNavHost(
             DashboardScreen(
                 uiState = uiState,
                 onAddFirstFlock = { onOpenPens(true) },
-                onTryExampleData = { viewModel.loadExampleData() },
                 onRecordToday = { onOpenRecord(uiState.todayDate) },
                 onSelectWindow = onSelectWindow
             )
@@ -416,7 +442,7 @@ private fun ClutchTopBar(
         ),
         navigationIcon = {
             if (onTab) {
-                EggYolkLogo(
+                ClutchLogo(
                     size = 32.dp,
                     modifier = Modifier.padding(start = 16.dp, end = 4.dp)
                 )

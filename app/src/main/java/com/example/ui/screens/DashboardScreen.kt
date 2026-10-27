@@ -21,7 +21,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -43,10 +42,7 @@ import com.example.ui.components.PerformanceChartCard
 import com.example.ui.components.PeriodSwitch
 import com.example.ui.components.ClutchCard
 import com.example.ui.components.ClutchPrimaryButton
-import com.example.ui.components.ClutchSecondaryButton
-import com.example.ui.components.EggYolkLogo
 import com.example.ui.components.EmptyStateCard
-import com.example.ui.components.IconBadge
 import com.example.ui.components.MetricExplanationBottomSheet
 import com.example.ui.components.OfflineReassurance
 import com.example.ui.components.ScreenColumn
@@ -64,7 +60,6 @@ import java.util.Calendar
 fun DashboardScreen(
     uiState: ClutchUiState,
     onAddFirstFlock: () -> Unit,
-    onTryExampleData: () -> Unit,
     onRecordToday: () -> Unit,
     onSelectWindow: (TrendWindow) -> Unit,
     modifier: Modifier = Modifier
@@ -75,10 +70,18 @@ fun DashboardScreen(
     ScreenColumn(modifier = modifier, testTag = "today_screen", maxContentWidth = ClutchDimens.WideContentMaxWidth) {
         when {
             uiState.flocks.isEmpty() || dashboard == null -> {
-                FirstRunWelcome(
-                    onAddFirstFlock = onAddFirstFlock,
-                    onTryExampleData = onTryExampleData
+                Greeting(todayDate = uiState.todayDate)
+                EmptyStateCard(
+                    icon = ClutchIcons.Pens,
+                    title = "Add your first pen",
+                    body = "A pen is one group of birds kept together, like \"Pen A\". Tell Clutch how many birds you stocked and their age, and you are ready to record.",
+                    primaryLabel = "Add my first pen",
+                    primaryIcon = ClutchIcons.Add,
+                    onPrimary = onAddFirstFlock,
+                    primaryTestTag = "add_first_flock_button",
+                    modifier = Modifier.testTag("first_run_empty_state")
                 )
+                OfflineReassurance()
             }
             dashboard.latestRecord == null -> {
                 Greeting(todayDate = uiState.todayDate)
@@ -134,95 +137,6 @@ private fun Greeting(todayDate: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-@Composable
-private fun FirstRunWelcome(
-    onAddFirstFlock: () -> Unit,
-    onTryExampleData: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("first_run_empty_state"),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        EggYolkLogo(size = 64.dp)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Akwaaba! Welcome to Clutch",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Your layer farm records, weekly summaries and targets in one place.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        ClutchCard {
-            BenefitRow(
-                icon = ClutchIcons.Daily,
-                title = "Daily records in a minute",
-                body = "Eggs in crates, feed, deaths and egg weight. The sums are done for you."
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            BenefitRow(
-                icon = ClutchIcons.Dashboard,
-                title = "See your performance",
-                body = "Laying %, feed, egg mass, deaths and egg quality as simple charts."
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            BenefitRow(
-                icon = ClutchIcons.Weekly,
-                title = "Weekly summary and notes",
-                body = "Totals for each week, with space for what you did about it."
-            )
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            BenefitRow(
-                icon = ClutchIcons.Offline,
-                title = "Works without data",
-                body = "Everything is saved on your phone."
-            )
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            ClutchPrimaryButton(
-                text = "Add my first pen",
-                icon = ClutchIcons.Add,
-                onClick = onAddFirstFlock,
-                testTag = "add_first_flock_button"
-            )
-            ClutchSecondaryButton(
-                text = "Try with a sample pen",
-                onClick = onTryExampleData,
-                testTag = "try_example_data_button"
-            )
-        }
-    }
-}
-
-@Composable
-private fun BenefitRow(icon: ImageVector, title: String, body: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconBadge(icon = icon)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
 

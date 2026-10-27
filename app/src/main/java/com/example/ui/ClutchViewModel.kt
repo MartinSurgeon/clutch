@@ -246,19 +246,6 @@ class ClutchViewModel(
         _trendWindow.value = window
     }
 
-    fun loadExampleData() {
-        viewModelScope.launch {
-            runCatching {
-                val flockId = repository.insertExampleFlockAndRecords(todayDate)
-                _selectedFlockId.value = flockId
-                _selectedRecordDate.value = todayDate
-                _snackbarEvents.tryEmit("Sample pen added. Look around, then clear it when you are ready.")
-            }.onFailure {
-                _snackbarEvents.tryEmit("Sorry, the sample could not load. Please try again.")
-            }
-        }
-    }
-
     fun removeExampleData() {
         viewModelScope.launch {
             runCatching {
