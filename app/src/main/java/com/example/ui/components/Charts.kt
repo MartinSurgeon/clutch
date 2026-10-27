@@ -120,7 +120,9 @@ data class ChartSpec(
     val pointNoun: String,
     val segmentNames: List<String> = emptyList(),
     val footnote: String? = null,
-    val emptyMessage: String = "Record a few more days to see this chart."
+    val emptyMessage: String = "Record a few more days to see this chart.",
+    /** Written before numbers, e.g. "GH₵ " for money. */
+    val prefix: String = ""
 ) {
     fun format(value: Double): String {
         val number = when (decimals) {
@@ -128,12 +130,17 @@ data class ChartSpec(
             1 -> LayerCalc.format1(value)
             else -> LayerCalc.format2(value)
         }
-        return number + unit
+        val sign = if (number.startsWith("-")) "−" else ""
+        return sign + prefix + number.removePrefix("-") + unit
     }
 
     fun formatAxis(value: Double): String {
         val rounded = if (value == floor(value)) value.roundToInt().toString() else LayerCalc.format1(value)
-        return rounded + unit.trim().let { if (it == "%") "%" else "" }
+        val sign = if (rounded.startsWith("-")) "−" else ""
+        val short = if (prefix.isNotEmpty() && kotlin.math.abs(value) >= 1000) {
+            LayerCalc.format1(kotlin.math.abs(value) / 1000.0).removeSuffix(".0") + "k"
+        } else rounded.removePrefix("-")
+        return sign + prefix.trim() + short + unit.trim().let { if (it == "%") "%" else "" }
     }
 }
 
@@ -515,12 +522,15 @@ private fun ChartCanvas(
                         }
                     } else {
                         val c = if (inTarget(d.value)) colors.good else colors.warn
-                        val yTop = y(d.value)
+                        val yValue = y(d.value)
                         val yZero = y(maxOf(0.0, axisMin))
+                        // Bars grow up from zero for gains and down from zero for losses
+                        val barTop = minOf(yValue, yZero)
+                        val barHeight = kotlin.math.abs(yZero - yValue).coerceAtLeast(2.dp.toPx())
                         drawRoundRect(
                             color = if (dim) c.copy(alpha = 0.72f) else c,
-                            topLeft = Offset(x, minOf(yTop, yZero - 2.dp.toPx())),
-                            size = Size(barW, (yZero - yTop).coerceAtLeast(2.dp.toPx())),
+                            topLeft = Offset(x, if (yValue <= yZero) barTop else yZero),
+                            size = Size(barW, barHeight),
                             cornerRadius = radius
                         )
                     }

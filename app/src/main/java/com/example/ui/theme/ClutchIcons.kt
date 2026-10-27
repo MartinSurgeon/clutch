@@ -3,6 +3,24 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.vector.ImageVector
 import compose.icons.FontAwesomeIcons
 import compose.icons.fontawesomeicons.Solid
+import compose.icons.fontawesomeicons.Brands
+import compose.icons.fontawesomeicons.brands.Whatsapp
+import compose.icons.fontawesomeicons.solid.Bell
+import compose.icons.fontawesomeicons.solid.BellSlash
+import compose.icons.fontawesomeicons.solid.Calculator
+import compose.icons.fontawesomeicons.solid.Cloud
+import compose.icons.fontawesomeicons.solid.CloudUploadAlt
+import compose.icons.fontawesomeicons.solid.Coins
+import compose.icons.fontawesomeicons.solid.Eye
+import compose.icons.fontawesomeicons.solid.EyeSlash
+import compose.icons.fontawesomeicons.solid.History
+import compose.icons.fontawesomeicons.solid.Hourglass
+import compose.icons.fontawesomeicons.solid.Lock
+import compose.icons.fontawesomeicons.solid.MoneyBillWave
+import compose.icons.fontawesomeicons.solid.PaperPlane
+import compose.icons.fontawesomeicons.solid.PhoneAlt
+import compose.icons.fontawesomeicons.solid.SignOutAlt
+import compose.icons.fontawesomeicons.solid.User
 import compose.icons.fontawesomeicons.solid.Archive
 import compose.icons.fontawesomeicons.solid.ArrowDown
 import compose.icons.fontawesomeicons.solid.ArrowLeft
@@ -110,6 +128,25 @@ object ClutchIcons {
     val TrendUp: ImageVector = FontAwesomeIcons.Solid.ArrowUp
     val TrendDown: ImageVector = FontAwesomeIcons.Solid.ArrowDown
     val TrendFlat: ImageVector = FontAwesomeIcons.Solid.ArrowRight
+
+    // Sharing, reminders, backup, money
+    val WhatsApp: ImageVector = FontAwesomeIcons.Brands.Whatsapp
+    val Send: ImageVector = FontAwesomeIcons.Solid.PaperPlane
+    val Reminder: ImageVector = FontAwesomeIcons.Solid.Bell
+    val ReminderOff: ImageVector = FontAwesomeIcons.Solid.BellSlash
+    val Cloud: ImageVector = FontAwesomeIcons.Solid.Cloud
+    val Backup: ImageVector = FontAwesomeIcons.Solid.CloudUploadAlt
+    val History: ImageVector = FontAwesomeIcons.Solid.History
+    val Money: ImageVector = FontAwesomeIcons.Solid.MoneyBillWave
+    val Coins: ImageVector = FontAwesomeIcons.Solid.Coins
+    val Calculator: ImageVector = FontAwesomeIcons.Solid.Calculator
+    val Hourglass: ImageVector = FontAwesomeIcons.Solid.Hourglass
+    val SignOut: ImageVector = FontAwesomeIcons.Solid.SignOutAlt
+    val Lock: ImageVector = FontAwesomeIcons.Solid.Lock
+    val Show: ImageVector = FontAwesomeIcons.Solid.Eye
+    val Hide: ImageVector = FontAwesomeIcons.Solid.EyeSlash
+    val Phone: ImageVector = FontAwesomeIcons.Solid.PhoneAlt
+    val Person: ImageVector = FontAwesomeIcons.Solid.User
 
     // Status
     val Good: ImageVector = FontAwesomeIcons.Solid.CheckCircle

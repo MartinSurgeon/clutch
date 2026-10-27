@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: a single-colour egg (Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2C8.1,2 5,8.2 5,13.2C5,17.8 8.1,22 12,22C15.9,22 19,17.8 19,13.2C19,8.2 15.9,2 12,2ZM12,19.5C9.8,19.5 8,17.6 8,15.2C8,14.7 8.4,14.3 8.9,14.3C9.4,14.3 9.8,14.7 9.8,15.2C9.8,16.6 10.8,17.7 12,17.7C12.5,17.7 12.9,18.1 12.9,18.6C12.9,19.1 12.5,19.5 12,19.5Z" />
+</vector>

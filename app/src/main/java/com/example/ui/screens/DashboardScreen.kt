@@ -31,7 +31,11 @@ import com.example.domain.TrendInsights
 import com.example.ui.ActiveFlockDashboard
 import com.example.ui.ClutchUiState
 import com.example.ui.RecordWithMetrics
+import com.example.ui.ReminderSettings
 import com.example.ui.TrendWindow
+import com.example.ui.share.latestDayReport
+import com.example.ui.share.rememberHasWhatsApp
+import com.example.ui.share.rememberShareReport
 import com.example.ui.components.BrandHeroCard
 import com.example.ui.components.ChartDatum
 import com.example.ui.components.ChartKind
@@ -43,6 +47,7 @@ import com.example.ui.components.PeriodSwitch
 import com.example.ui.components.ClutchCard
 import com.example.ui.components.ClutchPrimaryButton
 import com.example.ui.components.EmptyStateCard
+import com.example.ui.components.IconBadge
 import com.example.ui.components.MetricExplanationBottomSheet
 import com.example.ui.components.OfflineReassurance
 import com.example.ui.components.ScreenColumn
@@ -62,6 +67,10 @@ fun DashboardScreen(
     onAddFirstFlock: () -> Unit,
     onRecordToday: () -> Unit,
     onSelectWindow: (TrendWindow) -> Unit,
+    reminder: ReminderSettings = ReminderSettings(promptDismissed = true),
+    onEnableReminder: (Int) -> Unit = {},
+    onDismissReminderPrompt: () -> Unit = {},
+    onOpenEndOfLay: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedExplanation by remember { mutableStateOf<LayerCalc.MetricExplanation?>(null) }
@@ -104,7 +113,19 @@ fun DashboardScreen(
                     trendWindow = uiState.trendWindow,
                     onSelectWindow = onSelectWindow,
                     onMetricClick = { selectedExplanation = it },
-                    onRecordToday = onRecordToday
+                    onRecordToday = onRecordToday,
+                    extras = {
+                        if (!reminder.enabled && !reminder.promptDismissed) {
+                            ReminderPromptCard(
+                                reminder = reminder,
+                                onEnable = onEnableReminder,
+                                onDismiss = onDismissReminderPrompt
+                            )
+                        }
+                        if (dashboard.ageWeeksToday >= END_OF_LAY_NUDGE_WEEKS) {
+                            EndOfLayNudge(ageWeeks = dashboard.ageWeeksToday, onOpen = onOpenEndOfLay)
+                        }
+                    }
                 )
             }
         }
@@ -147,9 +168,12 @@ private fun DashboardContent(
     trendWindow: TrendWindow,
     onSelectWindow: (TrendWindow) -> Unit,
     onMetricClick: (LayerCalc.MetricExplanation) -> Unit,
-    onRecordToday: () -> Unit
+    onRecordToday: () -> Unit,
+    extras: @Composable () -> Unit = {}
 ) {
     val latest = dashboard.latestRecord ?: return
+    val share = rememberShareReport()
+    val hasWhatsApp = rememberHasWhatsApp()
     val m = latest.metrics
     val rec = latest.entity
 
@@ -167,13 +191,19 @@ private fun DashboardContent(
             TrendsSection(dashboard = dashboard, trendWindow = trendWindow, onSelectWindow = onSelectWindow)
         }
         val task: @Composable () -> Unit = {
-            TodayTaskCard(isTodayRecorded = dashboard.isTodayRecorded, onRecordToday = onRecordToday)
+            TodayTaskCard(
+                isTodayRecorded = dashboard.isTodayRecorded,
+                onRecordToday = onRecordToday,
+                hasWhatsApp = hasWhatsApp,
+                onShareToday = { latestDayReport(dashboard)?.let { share(it, true) } }
+            )
         }
         val indicators: @Composable () -> Unit = {
             LatestIndicators(dashboard = dashboard, latest = latest, onMetricClick = onMetricClick)
         }
         val warnings: @Composable () -> Unit = {
             WarningsSectionCard(warnings = dashboard.warnings)
+            extras()
         }
 
         if (twoPane) {
@@ -225,7 +255,9 @@ private fun DashboardContent(
 @Composable
 private fun TodayTaskCard(
     isTodayRecorded: Boolean,
-    onRecordToday: () -> Unit
+    onRecordToday: () -> Unit,
+    hasWhatsApp: Boolean,
+    onShareToday: () -> Unit
 ) {
     if (isTodayRecorded) {
         ClutchCard(
@@ -263,6 +295,13 @@ private fun TodayTaskCard(
                     Text("Change", fontWeight = FontWeight.Bold)
                 }
             }
+            // The natural next step after recording: tell the owner (one tap)
+            ClutchPrimaryButton(
+                text = if (hasWhatsApp) "Send today's report on WhatsApp" else "Send today's report",
+                icon = if (hasWhatsApp) ClutchIcons.WhatsApp else ClutchIcons.Send,
+                onClick = onShareToday,
+                testTag = "share_today_whatsapp"
+            )
         }
     } else {
         ClutchCard(
@@ -689,4 +728,30 @@ private fun buildChartSpecs(
     )
 
     return listOf(laying, feed, eggMass, deaths, quality).associateBy { it.id }
+}
+
+/** From this age the end-of-lay planner is worth a look (typical brown layers are sold at 72–80 weeks). */
+private const val END_OF_LAY_NUDGE_WEEKS = 60
+
+@Composable
+private fun EndOfLayNudge(ageWeeks: Int, onOpen: () -> Unit) {
+    ClutchCard(onClick = onOpen, modifier = Modifier.testTag("end_of_lay_nudge")) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            IconBadge(
+                icon = ClutchIcons.Calculator,
+                size = 40.dp,
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Your birds are $ageWeeks weeks old", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+                Text(
+                    "See when keeping them stops paying, and whether to sell now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(ClutchIcons.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
+        }
+    }
 }

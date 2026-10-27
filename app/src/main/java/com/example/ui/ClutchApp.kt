@@ -65,13 +65,19 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.components.ClutchLogo
 import com.example.ui.components.ExampleDataBanner
 import com.example.ui.components.LoadingState
+import com.example.ui.screens.AccountScreen
 import com.example.ui.screens.DailyScreen
 import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.EndOfLayScreen
 import com.example.ui.screens.FlocksScreen
 import com.example.ui.screens.GuideScreen
 import com.example.ui.screens.OnboardingScreen
 import com.example.ui.screens.RecordScreen
+import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.WeeklyScreen
+import com.example.ui.share.latestDayReport
+import com.example.ui.share.rememberHasWhatsApp
+import com.example.ui.share.rememberShareReport
 import com.example.ui.theme.ClutchIcons
 import java.io.File
 
@@ -84,6 +90,9 @@ const val ROUTE_GUIDE = "guide"
 // Sub-screens (opened on top of a tab, with a back arrow)
 const val ROUTE_RECORD = "record"
 const val ROUTE_PENS = "pens"
+const val ROUTE_SETTINGS = "settings"
+const val ROUTE_ACCOUNT = "account"
+const val ROUTE_PLAN = "end_of_lay"
 
 private const val PREFS_NAME = "clutch_prefs"
 private const val KEY_ONBOARDING_DONE = "onboarding_done"
@@ -107,7 +116,9 @@ private fun isTabRoute(route: String) = ClutchTab.entries.any { it.route == rout
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ClutchApp(
-    viewModel: ClutchViewModel
+    viewModel: ClutchViewModel,
+    openRecordRequested: Boolean = false,
+    onOpenRecordHandled: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = rememberNavController()
@@ -126,6 +137,9 @@ fun ClutchApp(
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     var onboardingDone by rememberSaveable { mutableStateOf(prefs.getBoolean(KEY_ONBOARDING_DONE, false)) }
     var openAddPenAfterOnboarding by rememberSaveable { mutableStateOf(false) }
+    var openSignInAfterOnboarding by rememberSaveable { mutableStateOf(false) }
+    var accountStartsWithSignIn by rememberSaveable { mutableStateOf(false) }
+    val reminder by viewModel.reminder.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel) {
         viewModel.snackbarEvents.collect { msg ->
@@ -157,12 +171,26 @@ fun ClutchApp(
         if (!navController.popBackStack()) navigateToTab(ROUTE_DASHBOARD)
     }
 
+    fun openScreen(route: String) {
+        navController.navigate(route) { launchSingleTop = true }
+    }
+
+    fun openAccount(signIn: Boolean = false) {
+        accountStartsWithSignIn = signIn
+        openScreen(ROUTE_ACCOUNT)
+    }
+
     if (!uiState.isLoading && !onboardingDone && uiState.flocks.isEmpty()) {
         OnboardingScreen(
             onGetStarted = {
                 prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
                 onboardingDone = true
                 openAddPenAfterOnboarding = true
+            },
+            onSignIn = {
+                prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
+                onboardingDone = true
+                openSignInAfterOnboarding = true
             }
         )
         return
@@ -185,11 +213,8 @@ fun ClutchApp(
                     onBack = ::goBack,
                     onSelectFlock = { viewModel.selectFlock(it) },
                     onManagePens = { openPens() },
-                    onShareRecords = {
-                        viewModel.exportCsv { csvContent ->
-                            shareCsvViaIntent(context, csvContent)
-                        }
-                    }
+                    onOpenSettings = { openScreen(ROUTE_SETTINGS) },
+                    onOpenEndOfLay = { openScreen(ROUTE_PLAN) }
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 if (uiState.hasExampleData) {
@@ -277,8 +302,29 @@ fun ClutchApp(
                         onBack = ::goBack,
                         onSelectWindow = { viewModel.setTrendWindow(it) },
                         openAddPenSheet = openAddPenSheet,
-                        onAddPenSheetConsumed = { openAddPenSheet = false }
+                        onAddPenSheetConsumed = { openAddPenSheet = false },
+                        reminder = reminder,
+                        accountStartsWithSignIn = accountStartsWithSignIn,
+                        onOpenScreen = ::openScreen,
+                        onOpenAccount = { openAccount(false) },
+                        onExportCsv = {
+                            viewModel.exportCsv { csvContent -> shareCsvViaIntent(context, csvContent) }
+                        }
                     )
+                    // "I already use Clutch" goes straight to sign-in and restore
+                    LaunchedEffect(openSignInAfterOnboarding) {
+                        if (openSignInAfterOnboarding) {
+                            openSignInAfterOnboarding = false
+                            openAccount(signIn = true)
+                        }
+                    }
+                    // Tapping the daily reminder opens "Record a day" for today
+                    LaunchedEffect(openRecordRequested, uiState.flocks.isNotEmpty()) {
+                        if (openRecordRequested && uiState.flocks.isNotEmpty()) {
+                            openRecord(uiState.todayDate)
+                            onOpenRecordHandled()
+                        }
+                    }
                     // "Get started" goes straight to adding the first pen (one less tap)
                     LaunchedEffect(openAddPenAfterOnboarding) {
                         if (openAddPenAfterOnboarding) {
@@ -302,7 +348,12 @@ private fun ClutchNavHost(
     onBack: () -> Unit,
     onSelectWindow: (TrendWindow) -> Unit,
     openAddPenSheet: Boolean,
-    onAddPenSheetConsumed: () -> Unit
+    onAddPenSheetConsumed: () -> Unit,
+    reminder: ReminderSettings,
+    accountStartsWithSignIn: Boolean,
+    onOpenScreen: (String) -> Unit,
+    onOpenAccount: () -> Unit,
+    onExportCsv: () -> Unit
 ) {
     NavHost(
         navController = navController,
@@ -314,7 +365,33 @@ private fun ClutchNavHost(
                 uiState = uiState,
                 onAddFirstFlock = { onOpenPens(true) },
                 onRecordToday = { onOpenRecord(uiState.todayDate) },
-                onSelectWindow = onSelectWindow
+                onSelectWindow = onSelectWindow,
+                reminder = reminder,
+                onEnableReminder = { minute -> viewModel.setReminder(true, minute) },
+                onDismissReminderPrompt = { viewModel.dismissReminderPrompt() },
+                onOpenEndOfLay = { onOpenScreen(ROUTE_PLAN) }
+            )
+        }
+
+        composable(ROUTE_SETTINGS) {
+            SettingsScreen(
+                uiState = uiState,
+                viewModel = viewModel,
+                onOpenAccount = onOpenAccount,
+                onOpenEndOfLay = { onOpenScreen(ROUTE_PLAN) },
+                onExportCsv = onExportCsv
+            )
+        }
+
+        composable(ROUTE_ACCOUNT) {
+            AccountScreen(viewModel = viewModel, startWithSignIn = accountStartsWithSignIn)
+        }
+
+        composable(ROUTE_PLAN) {
+            EndOfLayScreen(
+                uiState = uiState,
+                viewModel = viewModel,
+                onRecordToday = { onOpenRecord(uiState.todayDate) }
             )
         }
 
@@ -428,8 +505,11 @@ private fun ClutchTopBar(
     onBack: () -> Unit,
     onSelectFlock: (String) -> Unit,
     onManagePens: () -> Unit,
-    onShareRecords: () -> Unit
+    onOpenSettings: () -> Unit,
+    onOpenEndOfLay: () -> Unit
 ) {
+    val share = rememberShareReport()
+    val hasWhatsApp = rememberHasWhatsApp()
     var switcherExpanded by remember { mutableStateOf(false) }
     var overflowExpanded by remember { mutableStateOf(false) }
     val activeFlock = uiState.activeDashboard?.flock
@@ -463,6 +543,9 @@ private fun ClutchTopBar(
                     subtitle = activeFlock?.name
                 )
                 currentRoute == ROUTE_PENS -> TopTitle(title = "Your pens")
+                currentRoute == ROUTE_SETTINGS -> TopTitle(title = "Settings & backup")
+                currentRoute == ROUTE_ACCOUNT -> TopTitle(title = "Backup")
+                currentRoute == ROUTE_PLAN -> TopTitle(title = "End-of-lay planner", subtitle = activeFlock?.name)
                 activeFlock != null -> Box {
                     Row(
                         modifier = Modifier
@@ -553,6 +636,32 @@ private fun ClutchTopBar(
                         expanded = overflowExpanded,
                         onDismissRequest = { overflowExpanded = false }
                     ) {
+                        uiState.activeDashboard?.let { latestDayReport(it) }?.let { report ->
+                            DropdownMenuItem(
+                                text = { Text(if (hasWhatsApp) "Send report on WhatsApp" else "Send today's report") },
+                                leadingIcon = {
+                                    Icon(
+                                        if (hasWhatsApp) ClutchIcons.WhatsApp else ClutchIcons.Send,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                onClick = {
+                                    overflowExpanded = false
+                                    share(report, true)
+                                },
+                                modifier = Modifier.testTag("menu_share_report")
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text("End-of-lay planner") },
+                            leadingIcon = { Icon(ClutchIcons.Calculator, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            onClick = {
+                                overflowExpanded = false
+                                onOpenEndOfLay()
+                            },
+                            modifier = Modifier.testTag("menu_end_of_lay")
+                        )
                         DropdownMenuItem(
                             text = { Text("Manage pens") },
                             leadingIcon = { Icon(ClutchIcons.Pens, contentDescription = null, modifier = Modifier.size(16.dp)) },
@@ -561,14 +670,15 @@ private fun ClutchTopBar(
                                 onManagePens()
                             }
                         )
+                        HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("Share records") },
-                            leadingIcon = { Icon(ClutchIcons.Share, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            text = { Text("Settings & backup") },
+                            leadingIcon = { Icon(ClutchIcons.Settings, contentDescription = null, modifier = Modifier.size(16.dp)) },
                             onClick = {
                                 overflowExpanded = false
-                                onShareRecords()
+                                onOpenSettings()
                             },
-                            modifier = Modifier.testTag("menu_export_csv_item")
+                            modifier = Modifier.testTag("menu_settings")
                         )
                     }
                 }

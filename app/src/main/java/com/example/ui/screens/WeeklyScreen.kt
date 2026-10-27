@@ -61,6 +61,9 @@ import com.example.ui.components.ScreenColumn
 import com.example.ui.components.ScreenTitle
 import com.example.ui.components.StatusChip
 import com.example.ui.components.SummaryRow
+import com.example.ui.share.rememberHasWhatsApp
+import com.example.ui.share.rememberShareReport
+import com.example.ui.share.weekReport
 import com.example.ui.theme.ClutchIcons
 
 @Composable
@@ -89,6 +92,8 @@ fun WeeklyScreen(
     }
 
     var editingWeek by remember { mutableStateOf<Int?>(null) }
+    val share = rememberShareReport()
+    val hasWhatsApp = rememberHasWhatsApp()
     var expandedWeek by rememberSaveable(dashboard.flock.id) { mutableStateOf(weeks.first().ageWeek) }
 
     Box(
@@ -130,7 +135,9 @@ fun WeeklyScreen(
                     note = dashboard.weeklyNotes[week.ageWeek],
                     expanded = expandedWeek == week.ageWeek,
                     onToggle = { expandedWeek = if (expandedWeek == week.ageWeek) -1 else week.ageWeek },
-                    onEditNotes = { editingWeek = week.ageWeek }
+                    onEditNotes = { editingWeek = week.ageWeek },
+                    hasWhatsApp = hasWhatsApp,
+                    onShare = { share(weekReport(dashboard, week), true) }
                 )
             }
         }
@@ -158,7 +165,9 @@ private fun WeekCard(
     note: WeeklyNoteEntity?,
     expanded: Boolean,
     onToggle: () -> Unit,
-    onEditNotes: () -> Unit
+    onEditNotes: () -> Unit,
+    hasWhatsApp: Boolean,
+    onShare: () -> Unit
 ) {
     ClutchCard(modifier = Modifier.testTag("week_summary_${week.ageWeek}")) {
         ExpandableHeader(
@@ -226,6 +235,12 @@ private fun WeekCard(
                 }
 
                 NotesBlock(note = note, onEditNotes = onEditNotes, ageWeek = week.ageWeek)
+                ClutchPrimaryButton(
+                    text = if (hasWhatsApp) "Send week report on WhatsApp" else "Send week report",
+                    icon = if (hasWhatsApp) ClutchIcons.WhatsApp else ClutchIcons.Send,
+                    onClick = onShare,
+                    testTag = "share_week_${week.ageWeek}"
+                )
             }
         }
     }

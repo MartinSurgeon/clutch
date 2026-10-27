@@ -1,3 +1,4 @@
+import java.util.Properties
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 
 plugins {
@@ -20,6 +21,15 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Clutch backup server. Override in local.properties, e.g.
+    //   clutch.apiUrl=https://your-domain.com/clutch/backend/api
+    val localProps = Properties().apply {
+      val file = rootProject.file("local.properties")
+      if (file.exists()) file.inputStream().use { load(it) }
+    }
+    val apiUrl = localProps.getProperty("clutch.apiUrl") ?: "http://10.0.2.2/clutch/backend/api"
+    buildConfigField("String", "API_BASE_URL", "\"$apiUrl\"")
   }
 
   // Do not remove or modify these signingConfigs. They are necessary for building, installing,
@@ -48,11 +58,15 @@ android {
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("release")
+      // Release builds talk to the backup server over HTTPS only
+      manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
     debug {
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in
       // AI Studio.
       signingConfig = signingConfigs.getByName("debugConfig")
+      // Debug builds may use plain HTTP to reach a local XAMPP server
+      manifestPlaceholders["usesCleartextTraffic"] = "true"
     }
   }
   compileOptions {

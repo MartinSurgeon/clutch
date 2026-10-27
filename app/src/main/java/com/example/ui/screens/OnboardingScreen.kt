@@ -72,6 +72,7 @@ private data class OnboardingPage(
 @Composable
 fun OnboardingScreen(
     onGetStarted: () -> Unit,
+    onSignIn: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val pages = listOf(
@@ -192,6 +193,15 @@ fun OnboardingScreen(
                     },
                     testTag = if (isLast) "onboarding_get_started" else "onboarding_next"
                 )
+                // New phone? Restore instead of starting again
+                TextButton(
+                    onClick = onSignIn,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .testTag("onboarding_sign_in")
+                ) {
+                    Text("I already use Clutch — sign in", style = MaterialTheme.typography.labelLarge)
+                }
             }
         }
     }

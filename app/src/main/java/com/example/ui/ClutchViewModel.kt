@@ -3,17 +3,21 @@ package com.example.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.local.AppPrefs
 import com.example.data.local.DailyRecordEntity
 import com.example.data.local.FlockEntity
 import com.example.data.local.WeeklyNoteEntity
 import com.example.data.repository.ClutchRepository
 import com.example.domain.LayerCalc
+import com.example.data.sync.SyncManager
+import com.example.data.sync.SyncStatus
 import com.example.domain.WeeklyCalc
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -80,10 +84,107 @@ fun currentIsoDate(): String {
     return "${y.toString().padStart(4, '0')}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}"
 }
 
+data class ReminderSettings(
+    val enabled: Boolean = false,
+    val minuteOfDay: Int = 18 * 60,
+    val promptDismissed: Boolean = false
+)
+
+data class EndOfLayPrices(
+    val eggPricePerCrate: Double? = null,
+    val feedPricePerBag: Double? = null,
+    val spentHenPrice: Double? = null,
+    val otherCostPerBirdPerMonth: Double? = null
+)
+
 class ClutchViewModel(
     private val repository: ClutchRepository,
+    private val syncManager: SyncManager? = null,
+    private val prefs: AppPrefs? = null,
+    private val onReminderChanged: () -> Unit = {},
     val todayDate: String = currentIsoDate()
 ) : ViewModel() {
+
+    /** Backup status for the account screen and the "backed up" line. */
+    val syncStatus: StateFlow<SyncStatus> = syncManager?.status ?: MutableStateFlow(SyncStatus())
+
+    private val _reminder = MutableStateFlow(
+        ReminderSettings(
+            enabled = prefs?.reminderEnabled ?: false,
+            minuteOfDay = prefs?.reminderMinuteOfDay ?: 18 * 60,
+            promptDismissed = prefs?.reminderPromptDismissed ?: false
+        )
+    )
+    val reminder: StateFlow<ReminderSettings> = _reminder.asStateFlow()
+
+    init {
+        // Catch up with the server whenever the app opens (does nothing when signed out)
+        syncManager?.syncSoon(delayMs = 500)
+    }
+
+    fun setReminder(enabled: Boolean, minuteOfDay: Int = _reminder.value.minuteOfDay) {
+        prefs?.reminderEnabled = enabled
+        prefs?.reminderMinuteOfDay = minuteOfDay
+        _reminder.value = _reminder.value.copy(enabled = enabled, minuteOfDay = minuteOfDay)
+        onReminderChanged()
+        if (enabled) _snackbarEvents.tryEmit("Daily reminder set for ${formatMinuteOfDay(minuteOfDay)}")
+    }
+
+    fun dismissReminderPrompt() {
+        prefs?.reminderPromptDismissed = true
+        _reminder.value = _reminder.value.copy(promptDismissed = true)
+    }
+
+    // --- Account & backup ---
+
+    suspend fun register(phone: String, name: String, password: String): Result<Unit> =
+        runCatching { syncManager!!.register(phone, name, password) }
+            .onSuccess { _snackbarEvents.tryEmit("Account created. Your records are backed up.") }
+
+    suspend fun login(phone: String, password: String): Result<Unit> =
+        runCatching { syncManager!!.login(phone, password) }
+            .onSuccess { _snackbarEvents.tryEmit("Signed in. Your records are up to date.") }
+
+    fun signOut() {
+        viewModelScope.launch {
+            syncManager?.signOut()
+            _snackbarEvents.tryEmit("Signed out. Your records stay on this phone.")
+        }
+    }
+
+    fun backUpNow() {
+        viewModelScope.launch {
+            runCatching { syncManager?.syncNow() }
+                .onSuccess { _snackbarEvents.tryEmit("Backed up") }
+                .onFailure { _snackbarEvents.tryEmit(it.message ?: "Backup failed. Your records are safe on this phone.") }
+        }
+    }
+
+    private fun backUpSoon() {
+        syncManager?.syncSoon()
+    }
+
+    var serverUrlOverride: String?
+        get() = prefs?.serverUrlOverride
+        set(value) {
+            prefs?.serverUrlOverride = value
+        }
+
+    // --- End-of-lay prices (kept per pen on this phone) ---
+
+    fun endOfLayPrices(flockId: String): EndOfLayPrices = EndOfLayPrices(
+        eggPricePerCrate = prefs?.eolPrice(flockId, AppPrefs.EOL_EGG_PRICE),
+        feedPricePerBag = prefs?.eolPrice(flockId, AppPrefs.EOL_FEED_PRICE),
+        spentHenPrice = prefs?.eolPrice(flockId, AppPrefs.EOL_HEN_PRICE),
+        otherCostPerBirdPerMonth = prefs?.eolPrice(flockId, AppPrefs.EOL_OTHER_COST)
+    )
+
+    fun saveEndOfLayPrices(flockId: String, p: EndOfLayPrices) {
+        prefs?.setEolPrice(flockId, AppPrefs.EOL_EGG_PRICE, p.eggPricePerCrate)
+        prefs?.setEolPrice(flockId, AppPrefs.EOL_FEED_PRICE, p.feedPricePerBag)
+        prefs?.setEolPrice(flockId, AppPrefs.EOL_HEN_PRICE, p.spentHenPrice)
+        prefs?.setEolPrice(flockId, AppPrefs.EOL_OTHER_COST, p.otherCostPerBirdPerMonth)
+    }
 
     private val _selectedFlockId = MutableStateFlow<String?>(null)
     private val _selectedRecordDate = MutableStateFlow(todayDate)
@@ -283,6 +384,7 @@ class ClutchViewModel(
                 .onSuccess {
                     _selectedFlockId.value = id
                     _snackbarEvents.tryEmit("${entity.name} saved")
+                    backUpSoon()
                     onSaved(id)
                 }
                 .onFailure { _snackbarEvents.tryEmit("Sorry, ${entity.name} was not saved. Please try again.") }
@@ -293,7 +395,10 @@ class ClutchViewModel(
     fun updateFlockSize(flock: FlockEntity, hensHoused: Int) {
         viewModelScope.launch {
             runCatching { repository.saveFlock(flock.copy(hensHoused = hensHoused)) }
-                .onSuccess { _snackbarEvents.tryEmit("Starting flock size for ${flock.name} is now $hensHoused birds") }
+                .onSuccess {
+                    _snackbarEvents.tryEmit("Starting flock size for ${flock.name} is now $hensHoused birds")
+                    backUpSoon()
+                }
                 .onFailure { _snackbarEvents.tryEmit("Sorry, the flock size was not saved. Please try again.") }
         }
     }
@@ -316,6 +421,7 @@ class ClutchViewModel(
             runCatching { repository.saveWeeklyNote(note) }
                 .onSuccess {
                     _snackbarEvents.tryEmit("Notes for week $ageWeek saved")
+                    backUpSoon()
                     onSaved()
                 }
                 .onFailure { _snackbarEvents.tryEmit("Sorry, the notes were not saved. Please try again.") }
@@ -327,6 +433,7 @@ class ClutchViewModel(
             repository.archiveFlock(flock.id, archive)
             val msg = if (archive) "${flock.name} moved to old pens" else "${flock.name} is back in your pens"
             _snackbarEvents.tryEmit(msg)
+            backUpSoon()
         }
     }
 
@@ -336,9 +443,11 @@ class ClutchViewModel(
             if (count > 0) {
                 repository.archiveFlock(flock.id, true)
                 _snackbarEvents.tryEmit("${flock.name} has $count days of records, so it was moved to old pens instead")
+                backUpSoon()
             } else {
                 repository.deleteFlock(flock.id)
                 _snackbarEvents.tryEmit("${flock.name} removed")
+                backUpSoon()
             }
         }
     }
@@ -386,6 +495,7 @@ class ClutchViewModel(
             runCatching { repository.saveDailyRecord(record) }
                 .onSuccess {
                     _snackbarEvents.tryEmit("Saved! ${flock.name} is up to date.")
+                    backUpSoon()
                     onSaved()
                 }
                 .onFailure {
@@ -403,6 +513,7 @@ class ClutchViewModel(
         viewModelScope.launch {
             repository.deleteDailyRecord(flock.id, date)
             _snackbarEvents.tryEmit("Record for ${LayerCalc.friendlyDate(date)} deleted")
+            backUpSoon()
             onDeleted()
         }
     }
@@ -420,10 +531,21 @@ class ClutchViewModel(
 }
 
 class ClutchViewModelFactory(
-    private val repository: ClutchRepository
+    private val repository: ClutchRepository,
+    private val syncManager: SyncManager? = null,
+    private val prefs: AppPrefs? = null,
+    private val onReminderChanged: () -> Unit = {}
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return ClutchViewModel(repository) as T
+        return ClutchViewModel(repository, syncManager, prefs, onReminderChanged) as T
     }
+}
+
+/** "6:00 PM" style time for a minute-of-day value. */
+fun formatMinuteOfDay(minuteOfDay: Int): String {
+    val h24 = (minuteOfDay / 60) % 24
+    val m = minuteOfDay % 60
+    val h12 = if (h24 % 12 == 0) 12 else h24 % 12
+    return "$h12:${m.toString().padStart(2, '0')} ${if (h24 < 12) "AM" else "PM"}"
 }

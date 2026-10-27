@@ -2,9 +2,11 @@ package com.example.data.local
 
 import androidx.room.Dao
 import androidx.room.Database
+import android.content.Context
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
@@ -80,6 +82,59 @@ interface ClutchDao {
 
     @Query("DELETE FROM weekly_notes WHERE flockId IN (SELECT id FROM flocks WHERE isExample = 1)")
     suspend fun hardDeleteExampleWeeklyNotes()
+
+    // --- Cloud sync (sample data never leaves the phone) ---
+
+    @Query("SELECT * FROM flocks WHERE syncState = 'PENDING' AND isExample = 0")
+    suspend fun pendingFlocks(): List<FlockEntity>
+
+    @Query(
+        "SELECT * FROM daily_records WHERE syncState = 'PENDING' " +
+            "AND flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)"
+    )
+    suspend fun pendingRecords(): List<DailyRecordEntity>
+
+    @Query(
+        "SELECT * FROM weekly_notes WHERE syncState = 'PENDING' " +
+            "AND flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)"
+    )
+    suspend fun pendingWeeklyNotes(): List<WeeklyNoteEntity>
+
+    @Query("SELECT * FROM flocks WHERE id = :id LIMIT 1")
+    suspend fun anyFlock(id: String): FlockEntity?
+
+    @Query("SELECT * FROM daily_records WHERE id = :id LIMIT 1")
+    suspend fun anyRecord(id: String): DailyRecordEntity?
+
+    @Query("SELECT * FROM weekly_notes WHERE id = :id LIMIT 1")
+    suspend fun anyWeeklyNote(id: String): WeeklyNoteEntity?
+
+    /** Marks synced only if the row was not edited again while the upload was in flight. */
+    @Query("UPDATE flocks SET syncState = 'SYNCED' WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun markFlockSynced(id: String, updatedAt: Long)
+
+    @Query("UPDATE daily_records SET syncState = 'SYNCED' WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun markRecordSynced(id: String, updatedAt: Long)
+
+    @Query("UPDATE weekly_notes SET syncState = 'SYNCED' WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun markWeeklyNoteSynced(id: String, updatedAt: Long)
+
+    /** Rows that exist only on this phone (e.g. made before the farmer signed in) need uploading. */
+    @Query("UPDATE flocks SET syncState = 'PENDING' WHERE isExample = 0")
+    suspend fun markAllFlocksPending()
+
+    @Query("UPDATE daily_records SET syncState = 'PENDING' WHERE flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)")
+    suspend fun markAllRecordsPending()
+
+    @Query("UPDATE weekly_notes SET syncState = 'PENDING' WHERE flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)")
+    suspend fun markAllWeeklyNotesPending()
+
+    /** For the daily reminder: active pens with no record for [date]. */
+    @Query(
+        "SELECT name FROM flocks WHERE deleted = 0 AND archived = 0 AND isExample = 0 " +
+            "AND id NOT IN (SELECT flockId FROM daily_records WHERE date = :date AND deleted = 0)"
+    )
+    suspend fun penNamesMissingRecord(date: String): List<String>
 }
 
 /**
@@ -107,4 +162,23 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 @TypeConverters(SyncStateConverters::class)
 abstract class ClutchDatabase : RoomDatabase() {
     abstract fun clutchDao(): ClutchDao
+
+    companion object {
+        @Volatile
+        private var instance: ClutchDatabase? = null
+
+        /** One database for the whole app — the screens and the reminder receiver share it. */
+        fun get(context: Context): ClutchDatabase =
+            instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    ClutchDatabase::class.java,
+                    "clutch_ledger.db"
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
+                    .also { instance = it }
+            }
+    }
 }
