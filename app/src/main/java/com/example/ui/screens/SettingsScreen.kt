@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,8 +42,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.example.BuildConfig
 import com.example.domain.GhanaPhone
+import com.example.notifications.ReminderReceiver
+import com.example.notifications.ReminderScheduler
 import com.example.ui.ClutchUiState
 import com.example.ui.ClutchViewModel
 import com.example.ui.ReminderSettings
@@ -199,6 +203,15 @@ fun ReminderCard(
         if (granted) onChange(true, reminder.minuteOfDay)
     }
 
+    // Re-checked whenever the farmer comes back from phone settings
+    var notifyOk by remember { mutableStateOf(true) }
+    var onTime by remember { mutableStateOf(true) }
+    LifecycleResumeEffect(reminder.enabled) {
+        notifyOk = hasPermission() && ReminderScheduler.canNotify(context)
+        onTime = ReminderScheduler.canRingOnTime(context)
+        onPauseOrDispose { }
+    }
+
     fun turnOn() {
         if (hasPermission()) {
             permissionDenied = false
@@ -222,7 +235,7 @@ fun ReminderCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Remind me to record", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                 Text(
-                    "Only if today's count is not in yet",
+                    "Pops up on your screen if today's count is not in yet",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -242,7 +255,7 @@ fun ReminderCard(
                 onClick = { showPicker = true }
             )
         }
-        if (permissionDenied) {
+        if (permissionDenied || (reminder.enabled && !notifyOk)) {
             InfoNote(
                 title = "Notifications are off for Clutch",
                 text = "To get the reminder, allow notifications for Clutch in your phone settings."
@@ -258,6 +271,24 @@ fun ReminderCard(
                     )
                 }
             }) { Text("Open phone settings") }
+        } else if (reminder.enabled && !onTime) {
+            InfoNote(
+                title = "It may come a few minutes late",
+                text = "Allow \"Alarms & reminders\" for Clutch so it pops up at exactly ${formatMinuteOfDay(reminder.minuteOfDay)}."
+            )
+            TextButton(
+                onClick = { ReminderScheduler.exactAlarmSettingsIntent(context)?.let { runCatching { context.startActivity(it) } } },
+                modifier = Modifier.testTag("reminder_allow_exact")
+            ) { Text("Allow exact time") }
+        }
+        if (reminder.enabled && notifyOk) {
+            TextButton(
+                onClick = { ReminderReceiver.showTest(context) },
+                modifier = Modifier.testTag("reminder_test")
+            ) {
+                Icon(ClutchIcons.Reminder, contentDescription = null, modifier = Modifier.size(14.dp))
+                Text("  Show me a test reminder")
+            }
         }
     }
 
