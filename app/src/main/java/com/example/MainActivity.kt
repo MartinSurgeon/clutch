@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
 
     private val database by lazy { ClutchDatabase.get(applicationContext) }
     private val prefs by lazy { AppPrefs(applicationContext) }
-    private val repository by lazy { RoomClutchRepository(database.clutchDao()) }
+    private val repository by lazy { RoomClutchRepository(database.clutchDao(), syncManager.owner) }
     private val syncManager by lazy {
         SyncManager(
             dao = database.clutchDao(),

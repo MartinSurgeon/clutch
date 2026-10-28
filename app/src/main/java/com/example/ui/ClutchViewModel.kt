@@ -9,6 +9,8 @@ import com.example.data.local.FlockEntity
 import com.example.data.local.WeeklyNoteEntity
 import com.example.data.repository.ClutchRepository
 import com.example.domain.LayerCalc
+import com.example.data.local.UnownedPen
+import com.example.data.sync.SignInSummary
 import com.example.data.sync.SyncManager
 import com.example.data.sync.SyncStatus
 import com.example.domain.WeeklyCalc
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -139,11 +142,13 @@ class ClutchViewModel(
 
     suspend fun register(phone: String, name: String, password: String): Result<Unit> =
         runCatching { syncManager!!.register(phone, name, password) }
-            .onSuccess { _snackbarEvents.tryEmit("Account created. Your records are backed up.") }
+            .onSuccess { _snackbarEvents.tryEmit(signedInMessage(it, newAccount = true)) }
+            .map { }
 
     suspend fun login(phone: String, password: String): Result<Unit> =
         runCatching { syncManager!!.login(phone, password) }
-            .onSuccess { _snackbarEvents.tryEmit("Signed in. Your records are up to date.") }
+            .onSuccess { _snackbarEvents.tryEmit(signedInMessage(it, newAccount = false)) }
+            .map { }
 
     suspend fun deleteAccount(password: String): Result<Unit> =
         runCatching { syncManager!!.deleteAccount(password) }
@@ -152,8 +157,28 @@ class ClutchViewModel(
     fun signOut() {
         viewModelScope.launch {
             syncManager?.signOut()
-            _snackbarEvents.tryEmit("Signed out. Your records stay on this phone.")
+            _snackbarEvents.tryEmit("Signed out. Your pens are hidden until you sign in again.")
         }
+    }
+
+    /** Pens on this phone in no account, offered to the signed-in farmer ("Add to my account?"). */
+    val unclaimedPens: StateFlow<List<UnownedPen>> = (syncManager?.unclaimedPens ?: flowOf(emptyList()))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Pens hidden while signed out, because they belong to an account. */
+    val hiddenPenCount: StateFlow<Int> = (syncManager?.hiddenPenCount ?: flowOf(0))
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    fun addPensToAccount(pens: List<UnownedPen>) {
+        viewModelScope.launch {
+            syncManager?.claimPens(pens.map { it.id })
+            _snackbarEvents.tryEmit("${pensText(pens.size)} added to your account. Backing up now.")
+        }
+    }
+
+    fun keepPensSeparate(pens: List<UnownedPen>) {
+        syncManager?.keepSeparate(pens.map { it.id })
+        _snackbarEvents.tryEmit("Kept out of your account. They show again when no one is signed in.")
     }
 
     fun backUpNow() {
@@ -552,4 +577,17 @@ fun formatMinuteOfDay(minuteOfDay: Int): String {
     val m = minuteOfDay % 60
     val h12 = if (h24 % 12 == 0) 12 else h24 % 12
     return "$h12:${m.toString().padStart(2, '0')} ${if (h24 < 12) "AM" else "PM"}"
+}
+
+fun pensText(count: Int): String = if (count == 1) "1 pen" else "$count pens"
+
+fun daysText(count: Int): String = if (count == 1) "1 day" else "$count days"
+
+internal fun signedInMessage(summary: SignInSummary, newAccount: Boolean): String = when {
+    !summary.restored && newAccount -> "Account created. Backup will finish when you have internet."
+    !summary.restored -> "Signed in. Your records will come down when you have internet."
+    newAccount && summary.pens == 0 -> "Account created. New records will be backed up."
+    newAccount -> "Account created. ${pensText(summary.pens)} backed up."
+    summary.pens == 0 -> "Signed in. There are no records in this account yet."
+    else -> "Signed in. ${pensText(summary.pens)} and ${summary.days} daily records restored."
 }

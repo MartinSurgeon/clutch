@@ -6,7 +6,11 @@ import com.example.data.local.FlockEntity
 import com.example.data.local.SyncState
 import com.example.data.local.WeeklyNoteEntity
 import com.example.domain.LayerCalc
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlin.math.roundToInt
 
 interface ClutchRepository {
@@ -32,11 +36,14 @@ interface ClutchRepository {
     suspend fun buildCsvExport(): String
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RoomClutchRepository(
-    private val dao: ClutchDao
+    private val dao: ClutchDao,
+    /** Whose pens to show and save: the signed-in account (its phone number), or null for pens in no account. */
+    private val owner: StateFlow<String?> = MutableStateFlow(null)
 ) : ClutchRepository {
 
-    override val allFlocks: Flow<List<FlockEntity>> = dao.observeAllFlocks()
+    override val allFlocks: Flow<List<FlockEntity>> = owner.flatMapLatest { dao.observeFlocks(it) }
     override val allActiveRecords: Flow<List<DailyRecordEntity>> = dao.observeAllActiveRecords()
     override val allWeeklyNotes: Flow<List<WeeklyNoteEntity>> = dao.observeAllWeeklyNotes()
 
@@ -54,7 +61,9 @@ class RoomClutchRepository(
             flock.copy(
                 updatedAt = System.currentTimeMillis(),
                 deleted = false,
-                syncState = SyncState.PENDING
+                syncState = SyncState.PENDING,
+                // A new pen belongs to whoever is signed in; an edited pen keeps its account
+                ownerId = flock.ownerId ?: owner.value
             )
         )
     }
@@ -273,7 +282,7 @@ class RoomClutchRepository(
     }
 
     override suspend fun buildCsvExport(): String {
-        val flocks = dao.getAllFlocksOnce()
+        val flocks = dao.getFlocksOnce(owner.value)
         val sb = StringBuilder()
         sb.appendLine(
             "flock_id,flock_name,breed,hens_housed,placed_date,age_weeks_at_placement,date,age_weeks,live_hens,closing_hens,eggs,hen_day_pct,hen_housed_pct,cracked,dirty,soft_shell,deaths,culls,feed_kg,feed_g_per_bird,water_l,water_ml_per_bird,avg_egg_weight_g,egg_mass_g,fcr,max_temp_c,body_weight_g,uniformity_pct,notes,sync_state"

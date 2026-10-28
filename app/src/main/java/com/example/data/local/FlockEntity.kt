@@ -17,5 +17,7 @@ data class FlockEntity(
     val isExample: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis(),
     val deleted: Boolean = false,
-    val syncState: SyncState = SyncState.PENDING
+    val syncState: SyncState = SyncState.PENDING,
+    /** Phone number of the account this pen belongs to; null = not in any account yet. Never sent to the server. */
+    val ownerId: String? = null
 )

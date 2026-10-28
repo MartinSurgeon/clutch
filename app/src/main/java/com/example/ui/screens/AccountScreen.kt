@@ -36,8 +36,11 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
+import com.example.data.local.UnownedPen
 import com.example.domain.GhanaPhone
 import com.example.ui.ClutchViewModel
+import com.example.ui.daysText
+import com.example.ui.pensText
 import com.example.ui.components.ClutchCard
 import com.example.ui.components.ClutchPrimaryButton
 import com.example.ui.components.ClutchSecondaryButton
@@ -72,10 +75,20 @@ fun AccountScreen(
 @Composable
 private fun SignedInView(viewModel: ClutchViewModel) {
     val sync by viewModel.syncStatus.collectAsState()
+    val unclaimed by viewModel.unclaimedPens.collectAsState()
     var confirmSignOut by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     ScreenTitle(title = "Backup", subtitle = "Your records are saved to your account")
+
+    // Asked once, right after signing in: never mix someone else's pens into this account silently
+    if (unclaimed.isNotEmpty()) {
+        UnclaimedPensCard(
+            pens = unclaimed,
+            onAdd = { viewModel.addPensToAccount(unclaimed) },
+            onKeepSeparate = { viewModel.keepPensSeparate(unclaimed) }
+        )
+    }
 
     ClutchCard(modifier = Modifier.testTag("account_card")) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -143,8 +156,8 @@ private fun SignedInView(viewModel: ClutchViewModel) {
         AlertDialog(
             onDismissRequest = { confirmSignOut = false },
             icon = { Icon(ClutchIcons.SignOut, contentDescription = null, modifier = Modifier.size(22.dp)) },
-            title = { Text("Sign out of backup?") },
-            text = { Text("Your records stay on this phone, and what is already backed up stays in your account. New records will not be backed up until you sign in again.") },
+            title = { Text("Sign out?") },
+            text = { Text("Your pens will be hidden on this phone until you sign in again. They stay safe in your account. Anything not backed up yet goes up when you sign in again on this phone.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmSignOut = false
@@ -362,5 +375,59 @@ private fun DebugServerField(viewModel: ClutchViewModel) {
             testTag = "input_server_url"
         )
         TextButton(onClick = { viewModel.serverUrlOverride = url.ifBlank { null } }) { Text("Use this server") }
+    }
+}
+
+/**
+ * Pens on this phone that are in no account. Shown to a farmer who has just signed in, so the
+ * choice is made once, knowingly: nothing is added to an account without asking.
+ */
+@Composable
+fun UnclaimedPensCard(
+    pens: List<UnownedPen>,
+    onAdd: () -> Unit,
+    onKeepSeparate: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val one = pens.size == 1
+    val names = pens.take(3).joinToString(", ") { "${it.name} (${daysText(it.days)})" } +
+        if (pens.size > 3) " and ${pens.size - 3} more" else ""
+    ClutchCard(
+        modifier = modifier.testTag("unclaimed_pens"),
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            IconBadge(
+                icon = ClutchIcons.Pens,
+                size = 40.dp,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    if (one) "1 pen on this phone is not in your account" else "${pensText(pens.size)} on this phone are not in your account",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Text(names, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+        }
+        Text(
+            if (one) "Add it if it is yours. If it belongs to someone else, keep it separate. It stays on this phone either way."
+            else "Add them if they are yours. If they belong to someone else, keep them separate. They stay on this phone either way.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onKeepSeparate, modifier = Modifier.testTag("unclaimed_keep_separate")) { Text("Keep separate") }
+            ClutchPrimaryButton(
+                text = "Add to my account",
+                icon = ClutchIcons.Backup,
+                onClick = onAdd,
+                modifier = Modifier.weight(1f),
+                testTag = "unclaimed_add"
+            )
+        }
     }
 }

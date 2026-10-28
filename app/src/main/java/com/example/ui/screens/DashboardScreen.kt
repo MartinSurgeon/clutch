@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.data.local.UnownedPen
 import com.example.domain.LayerCalc
 import com.example.domain.MetricExplanations
 import com.example.domain.ReferenceTargets
@@ -33,6 +34,7 @@ import com.example.ui.ClutchUiState
 import com.example.ui.RecordWithMetrics
 import com.example.ui.ReminderSettings
 import com.example.ui.TrendWindow
+import com.example.ui.pensText
 import com.example.ui.share.latestDayReport
 import com.example.ui.share.rememberHasWhatsApp
 import com.example.ui.share.rememberShareReport
@@ -71,15 +73,41 @@ fun DashboardScreen(
     onEnableReminder: (Int) -> Unit = {},
     onDismissReminderPrompt: () -> Unit = {},
     onOpenEndOfLay: () -> Unit = {},
+    unclaimedPens: List<UnownedPen> = emptyList(),
+    onAddPensToAccount: () -> Unit = {},
+    onKeepPensSeparate: () -> Unit = {},
+    hiddenPenCount: Int = 0,
+    onSignIn: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedExplanation by remember { mutableStateOf<LayerCalc.MetricExplanation?>(null) }
     val dashboard = uiState.activeDashboard
+    val unclaimedCard: @Composable () -> Unit = {
+        if (unclaimedPens.isNotEmpty()) {
+            UnclaimedPensCard(pens = unclaimedPens, onAdd = onAddPensToAccount, onKeepSeparate = onKeepPensSeparate)
+        }
+    }
 
     ScreenColumn(modifier = modifier, testTag = "today_screen", maxContentWidth = ClutchDimens.WideContentMaxWidth) {
         when {
+            (uiState.flocks.isEmpty() || dashboard == null) && hiddenPenCount > 0 -> {
+                // Signed out: the account's pens are hidden, not gone. Say so before anything else.
+                Greeting(todayDate = uiState.todayDate)
+                EmptyStateCard(
+                    icon = ClutchIcons.Person,
+                    title = "You are signed out",
+                    body = "${pensText(hiddenPenCount)} backed up to an account ${if (hiddenPenCount == 1) "is" else "are"} hidden on this phone. Sign in to see ${if (hiddenPenCount == 1) "it" else "them"} again.",
+                    primaryLabel = "Sign in",
+                    onPrimary = onSignIn,
+                    secondaryLabel = "Add a new pen",
+                    onSecondary = onAddFirstFlock,
+                    primaryTestTag = "signed_out_sign_in",
+                    modifier = Modifier.testTag("signed_out_empty_state")
+                )
+            }
             uiState.flocks.isEmpty() || dashboard == null -> {
                 Greeting(todayDate = uiState.todayDate)
+                unclaimedCard()
                 EmptyStateCard(
                     icon = ClutchIcons.Pens,
                     title = "Add your first pen",
@@ -115,6 +143,7 @@ fun DashboardScreen(
                     onMetricClick = { selectedExplanation = it },
                     onRecordToday = onRecordToday,
                     extras = {
+                        unclaimedCard()
                         if (!reminder.enabled && !reminder.promptDismissed) {
                             ReminderPromptCard(
                                 reminder = reminder,

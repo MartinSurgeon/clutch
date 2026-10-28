@@ -26,8 +26,12 @@ class SyncStateConverters {
 @Dao
 interface ClutchDao {
 
-    @Query("SELECT * FROM flocks WHERE deleted = 0 ORDER BY archived ASC, placedDate DESC, name ASC")
-    fun observeAllFlocks(): Flow<List<FlockEntity>>
+    /** Pens of one account ([owner] = its phone number), or pens in no account when [owner] is null. */
+    @Query("SELECT * FROM flocks WHERE deleted = 0 AND ownerId IS :owner ORDER BY archived ASC, placedDate DESC, name ASC")
+    fun observeFlocks(owner: String?): Flow<List<FlockEntity>>
+
+    @Query("SELECT * FROM flocks WHERE deleted = 0 AND ownerId IS :owner")
+    suspend fun getFlocksOnce(owner: String?): List<FlockEntity>
 
     @Query("SELECT * FROM flocks WHERE deleted = 0")
     suspend fun getAllFlocksOnce(): List<FlockEntity>
@@ -83,22 +87,22 @@ interface ClutchDao {
     @Query("DELETE FROM weekly_notes WHERE flockId IN (SELECT id FROM flocks WHERE isExample = 1)")
     suspend fun hardDeleteExampleWeeklyNotes()
 
-    // --- Cloud sync (sample data never leaves the phone) ---
+    // --- Cloud sync: only the signed-in account's pens are ever uploaded (sample data never leaves the phone) ---
 
-    @Query("SELECT * FROM flocks WHERE syncState = 'PENDING' AND isExample = 0")
-    suspend fun pendingFlocks(): List<FlockEntity>
+    @Query("SELECT * FROM flocks WHERE syncState = 'PENDING' AND isExample = 0 AND ownerId = :owner")
+    suspend fun pendingFlocks(owner: String): List<FlockEntity>
 
     @Query(
         "SELECT * FROM daily_records WHERE syncState = 'PENDING' " +
-            "AND flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)"
+            "AND flockId IN (SELECT id FROM flocks WHERE ownerId = :owner AND isExample = 0)"
     )
-    suspend fun pendingRecords(): List<DailyRecordEntity>
+    suspend fun pendingRecords(owner: String): List<DailyRecordEntity>
 
     @Query(
         "SELECT * FROM weekly_notes WHERE syncState = 'PENDING' " +
-            "AND flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)"
+            "AND flockId IN (SELECT id FROM flocks WHERE ownerId = :owner AND isExample = 0)"
     )
-    suspend fun pendingWeeklyNotes(): List<WeeklyNoteEntity>
+    suspend fun pendingWeeklyNotes(owner: String): List<WeeklyNoteEntity>
 
     @Query("SELECT * FROM flocks WHERE id = :id LIMIT 1")
     suspend fun anyFlock(id: String): FlockEntity?
@@ -119,23 +123,66 @@ interface ClutchDao {
     @Query("UPDATE weekly_notes SET syncState = 'SYNCED' WHERE id = :id AND updatedAt = :updatedAt")
     suspend fun markWeeklyNoteSynced(id: String, updatedAt: Long)
 
-    /** Rows that exist only on this phone (e.g. made before the farmer signed in) need uploading. */
-    @Query("UPDATE flocks SET syncState = 'PENDING' WHERE isExample = 0")
-    suspend fun markAllFlocksPending()
+    /** On sign-in every row of this account is sent again, in case the server copy is gone. */
+    @Query("UPDATE flocks SET syncState = 'PENDING' WHERE ownerId = :owner AND isExample = 0")
+    suspend fun markOwnedFlocksPending(owner: String)
 
-    @Query("UPDATE daily_records SET syncState = 'PENDING' WHERE flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)")
-    suspend fun markAllRecordsPending()
+    @Query("UPDATE daily_records SET syncState = 'PENDING' WHERE flockId IN (SELECT id FROM flocks WHERE ownerId = :owner AND isExample = 0)")
+    suspend fun markOwnedRecordsPending(owner: String)
 
-    @Query("UPDATE weekly_notes SET syncState = 'PENDING' WHERE flockId NOT IN (SELECT id FROM flocks WHERE isExample = 1)")
-    suspend fun markAllWeeklyNotesPending()
+    @Query("UPDATE weekly_notes SET syncState = 'PENDING' WHERE flockId IN (SELECT id FROM flocks WHERE ownerId = :owner AND isExample = 0)")
+    suspend fun markOwnedWeeklyNotesPending(owner: String)
 
-    /** For the daily reminder: active pens with no record for [date]. */
+    // --- Which account each pen belongs to ---
+
+    /** New account: the pens this farmer made before signing up become theirs. */
+    @Query("UPDATE flocks SET ownerId = :owner WHERE ownerId IS NULL AND isExample = 0")
+    suspend fun claimAllUnownedFlocks(owner: String)
+
+    /** "Add to my account": only pens that are in no account yet can be taken. */
+    @Query("UPDATE flocks SET ownerId = :owner, syncState = 'PENDING' WHERE ownerId IS NULL AND isExample = 0 AND id IN (:ids)")
+    suspend fun claimFlocks(ids: List<String>, owner: String)
+
+    @Query("UPDATE daily_records SET syncState = 'PENDING' WHERE flockId IN (:flockIds)")
+    suspend fun markRecordsPendingFor(flockIds: List<String>)
+
+    @Query("UPDATE weekly_notes SET syncState = 'PENDING' WHERE flockId IN (:flockIds)")
+    suspend fun markWeeklyNotesPendingFor(flockIds: List<String>)
+
+    @Query("UPDATE flocks SET ownerId = :owner WHERE id = :id")
+    suspend fun setFlockOwner(id: String, owner: String)
+
+    /** Account deleted or signed out by the server: the pens stay on the phone, in no account. */
+    @Query("UPDATE flocks SET ownerId = NULL WHERE ownerId = :owner")
+    suspend fun releaseFlocks(owner: String)
+
     @Query(
-        "SELECT name FROM flocks WHERE deleted = 0 AND archived = 0 AND isExample = 0 " +
+        "SELECT f.id AS id, f.name AS name, " +
+            "(SELECT COUNT(*) FROM daily_records r WHERE r.flockId = f.id AND r.deleted = 0) AS days " +
+            "FROM flocks f WHERE f.ownerId IS NULL AND f.isExample = 0 AND f.deleted = 0 ORDER BY f.name"
+    )
+    fun observeUnownedPens(): Flow<List<UnownedPen>>
+
+    /** Pens hidden while signed out because they belong to an account. */
+    @Query("SELECT COUNT(*) FROM flocks WHERE ownerId IS NOT NULL AND deleted = 0 AND isExample = 0")
+    fun observeAccountPenCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM flocks WHERE ownerId = :owner AND deleted = 0")
+    suspend fun countOwnedFlocks(owner: String): Int
+
+    @Query("SELECT COUNT(*) FROM daily_records WHERE deleted = 0 AND flockId IN (SELECT id FROM flocks WHERE ownerId = :owner AND deleted = 0)")
+    suspend fun countOwnedRecords(owner: String): Int
+
+    /** For the daily reminder: active pens of [owner] with no record for [date]. */
+    @Query(
+        "SELECT name FROM flocks WHERE deleted = 0 AND archived = 0 AND isExample = 0 AND ownerId IS :owner " +
             "AND id NOT IN (SELECT flockId FROM daily_records WHERE date = :date AND deleted = 0)"
     )
-    suspend fun penNamesMissingRecord(date: String): List<String>
+    suspend fun penNamesMissingRecord(date: String, owner: String?): List<String>
 }
+
+/** A pen on this phone that is in no account, with how many days it has records for. */
+data class UnownedPen(val id: String, val name: String, val days: Int)
 
 /**
  * v1 -> v2: adds body weight and uniformity to daily records, and the weekly notes table.
@@ -154,9 +201,24 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/**
+ * v2 -> v3: each pen remembers which account it belongs to, so signing in on a phone never mixes
+ * two farmers' records. Pens already backed up belong to whoever is signed in now; the rest are
+ * settled by a full download from the server on the next sync.
+ */
+fun migration2To3(prefs: AppPrefs) = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE flocks ADD COLUMN ownerId TEXT")
+        val owner = prefs.currentOwner ?: return
+        db.execSQL("UPDATE flocks SET ownerId = ? WHERE isExample = 0 AND syncState = 'SYNCED'", arrayOf(owner))
+        prefs.syncCursor = 0L
+        prefs.accountChecked = false
+    }
+}
+
 @Database(
     entities = [FlockEntity::class, DailyRecordEntity::class, WeeklyNoteEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(SyncStateConverters::class)
@@ -175,7 +237,7 @@ abstract class ClutchDatabase : RoomDatabase() {
                     ClutchDatabase::class.java,
                     "clutch_ledger.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, migration2To3(AppPrefs(context)))
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }

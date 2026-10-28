@@ -38,6 +38,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -307,6 +308,7 @@ fun ClutchApp(
                         accountStartsWithSignIn = accountStartsWithSignIn,
                         onOpenScreen = ::openScreen,
                         onOpenAccount = { openAccount(false) },
+                        onSignIn = { openAccount(signIn = true) },
                         onExportCsv = {
                             viewModel.exportCsv { csvContent -> shareCsvViaIntent(context, csvContent) }
                         }
@@ -353,6 +355,7 @@ private fun ClutchNavHost(
     accountStartsWithSignIn: Boolean,
     onOpenScreen: (String) -> Unit,
     onOpenAccount: () -> Unit,
+    onSignIn: () -> Unit,
     onExportCsv: () -> Unit
 ) {
     NavHost(
@@ -361,6 +364,8 @@ private fun ClutchNavHost(
         modifier = Modifier.fillMaxSize()
     ) {
         composable(ROUTE_DASHBOARD) {
+            val unclaimed by viewModel.unclaimedPens.collectAsState()
+            val hiddenPens by viewModel.hiddenPenCount.collectAsState()
             DashboardScreen(
                 uiState = uiState,
                 onAddFirstFlock = { onOpenPens(true) },
@@ -369,7 +374,12 @@ private fun ClutchNavHost(
                 reminder = reminder,
                 onEnableReminder = { minute -> viewModel.setReminder(true, minute) },
                 onDismissReminderPrompt = { viewModel.dismissReminderPrompt() },
-                onOpenEndOfLay = { onOpenScreen(ROUTE_PLAN) }
+                onOpenEndOfLay = { onOpenScreen(ROUTE_PLAN) },
+                unclaimedPens = unclaimed,
+                onAddPensToAccount = { viewModel.addPensToAccount(unclaimed) },
+                onKeepPensSeparate = { viewModel.keepPensSeparate(unclaimed) },
+                hiddenPenCount = hiddenPens,
+                onSignIn = onSignIn
             )
         }
 

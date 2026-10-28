@@ -6,16 +6,21 @@ import com.example.data.local.ClutchDao
 import com.example.data.local.DailyRecordEntity
 import com.example.data.local.FlockEntity
 import com.example.data.local.SyncState
+import com.example.data.local.UnownedPen
 import com.example.data.local.WeeklyNoteEntity
 import com.example.data.remote.ApiException
 import com.example.data.remote.AuthResult
 import com.example.data.remote.ClutchApi
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -28,14 +33,21 @@ data class SyncStatus(
     val userPhone: String? = null,
     val isSyncing: Boolean = false,
     val lastSyncedAt: Long = 0L,
-    val error: String? = null
+    val error: String? = null,
+    /** The whole account has been downloaded since sign-in, so pens that are not in it are known. */
+    val accountChecked: Boolean = false
 )
+
+/** What came back right after signing in, for the "Signed in" message. */
+data class SignInSummary(val pens: Int, val days: Int, val restored: Boolean)
 
 /**
  * Cloud backup & sync for one farmer's records.
  *
- * - Push: every row still PENDING on this phone (sample data excluded).
- * - Pull: every row the server stored after our cursor, page by page.
+ * - Every pen belongs to one account (or none yet). The phone shows and uploads only the signed-in
+ *   account's pens, so signing in on a shared phone never mixes two farmers' records.
+ * - Push: every row of this account still PENDING on this phone (sample data excluded).
+ * - Pull: every row the server stored after our cursor, page by page; pulled pens belong to this account.
  * - Conflicts: last write wins by updatedAt; a newer unsent edit on this phone is never overwritten.
  */
 class SyncManager(
@@ -50,46 +62,105 @@ class SyncManager(
     private val _status = MutableStateFlow(readStatus())
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
 
+    private val _owner = MutableStateFlow(prefs.currentOwner)
+    /** Whose pens the screens show: the signed-in account's, or (signed out) pens in no account. */
+    val owner: StateFlow<String?> = _owner.asStateFlow()
+
+    private val keptSeparate = MutableStateFlow(prefs.keptSeparatePenIds)
+
+    /** Pens on this phone in no account, offered to the signed-in farmer once their account is downloaded. */
+    val unclaimedPens: Flow<List<UnownedPen>> =
+        combine(status, dao.observeUnownedPens(), keptSeparate) { s, pens, kept ->
+            if (s.signedIn && s.accountChecked) pens.filter { it.id !in kept } else emptyList()
+        }
+
+    /** Pens hidden while signed out because they belong to an account (0 when signed in). */
+    val hiddenPenCount: Flow<Int> =
+        combine(status, dao.observeAccountPenCount()) { s, count -> if (s.signedIn) 0 else count }
+
     private fun readStatus() = SyncStatus(
         signedIn = prefs.authToken != null,
         userName = prefs.userName,
         userPhone = prefs.userPhone,
-        lastSyncedAt = prefs.lastSyncedAt
+        lastSyncedAt = prefs.lastSyncedAt,
+        accountChecked = prefs.accountChecked
     )
+
+    /** Shows the account saved in prefs: the screens switch to its pens. */
+    private fun publishAccount(error: String? = null) {
+        _status.value = readStatus().copy(error = error)
+        _owner.value = prefs.currentOwner
+        keptSeparate.value = prefs.keptSeparatePenIds
+    }
 
     private fun deviceName() = "${Build.MANUFACTURER} ${Build.MODEL}".trim().take(80)
 
-    suspend fun register(phone: String, name: String, password: String) =
-        signIn(api.register(phone, name, password, deviceName()))
+    suspend fun register(phone: String, name: String, password: String): SignInSummary =
+        signIn(api.register(phone, name, password, deviceName()), newAccount = true)
 
-    suspend fun login(phone: String, password: String) =
-        signIn(api.login(phone, password, deviceName()))
+    suspend fun login(phone: String, password: String): SignInSummary =
+        signIn(api.login(phone, password, deviceName()), newAccount = false)
 
-    private suspend fun signIn(auth: AuthResult) {
+    private suspend fun signIn(auth: AuthResult, newAccount: Boolean): SignInSummary {
+        val me = auth.user.phone
         prefs.authToken = auth.token
         prefs.userName = auth.user.name
-        prefs.userPhone = auth.user.phone
+        prefs.userPhone = me
         prefs.syncCursor = 0L
-        // Anything recorded before signing in on this phone must be uploaded too
-        dao.markAllFlocksPending()
-        dao.markAllRecordsPending()
-        dao.markAllWeeklyNotesPending()
-        _status.value = readStatus()
-        syncNow()
+        prefs.accountChecked = false
+        // Runs in the app's scope, not the screen's: leaving the sign-in screen must not cut the
+        // first download off. The screens switch to this account only once it has arrived.
+        return scope.async {
+            // A new account takes the pens made on this phone before signing up. Signing in to an
+            // existing account takes nothing: pens in no account are offered, never added silently.
+            if (newAccount) dao.claimAllUnownedFlocks(me)
+            dao.markOwnedFlocksPending(me)
+            dao.markOwnedRecordsPending(me)
+            dao.markOwnedWeeklyNotesPending(me)
+            val firstSync = runCatching { syncNow() }
+            if (prefs.authToken != null) publishAccount(error = firstSync.exceptionOrNull()?.message)
+            SignInSummary(
+                pens = dao.countOwnedFlocks(me),
+                days = dao.countOwnedRecords(me),
+                restored = firstSync.isSuccess
+            )
+        }.await()
     }
 
-    /** Deletes the account and its backup on the server. Records on this phone stay. */
+    /** "Add to my account": pens in no account join the signed-in account and are backed up. */
+    suspend fun claimPens(ids: List<String>) {
+        val me = prefs.currentOwner ?: return
+        if (ids.isEmpty()) return
+        dao.claimFlocks(ids, me)
+        dao.markRecordsPendingFor(ids)
+        dao.markWeeklyNotesPendingFor(ids)
+        syncSoon(delayMs = 0)
+    }
+
+    /** "Keep separate": these pens stay on the phone, out of the account, and are not offered again. */
+    fun keepSeparate(ids: List<String>) {
+        prefs.keptSeparatePenIds = prefs.keptSeparatePenIds + ids
+        keptSeparate.value = prefs.keptSeparatePenIds
+    }
+
+    /** Deletes the account and its backup on the server. The pens stay on this phone, in no account. */
     suspend fun deleteAccount(password: String) {
         val token = prefs.authToken ?: return
+        val me = prefs.userPhone
         api.deleteAccount(token, password)
+        me?.let { dao.releaseFlocks(it) }
         prefs.clearAccount()
-        _status.value = readStatus()
+        publishAccount()
     }
 
+    /** Signs this phone out. The account's pens are hidden (not deleted) until the farmer signs in again. */
     suspend fun signOut() {
-        prefs.authToken?.let { token -> runCatching { api.logout(token) } }
+        val token = prefs.authToken ?: return
+        // Send the last changes first. Offline, they wait on the phone and go up at the next sign-in here.
+        runCatching { syncNow() }
         prefs.clearAccount()
-        _status.value = readStatus()
+        publishAccount()
+        scope.launch { runCatching { api.logout(token) } }
     }
 
     /** Debounced background sync after a change; silently does nothing when signed out. */
@@ -105,15 +176,17 @@ class SyncManager(
     /** Pushes and pulls until up to date. Throws [ApiException] so a screen can show the reason. */
     suspend fun syncNow() {
         val token = prefs.authToken ?: return
+        val me = prefs.userPhone ?: return
         mutex.withLock {
             _status.update { it.copy(isSyncing = true, error = null) }
             try {
                 var since = prefs.syncCursor
+                val fullDownload = since == 0L
                 var firstRound = true
                 while (true) {
-                    val flocks = if (firstRound) dao.pendingFlocks() else emptyList()
-                    val records = if (firstRound) dao.pendingRecords() else emptyList()
-                    val notes = if (firstRound) dao.pendingWeeklyNotes() else emptyList()
+                    val flocks = if (firstRound) dao.pendingFlocks(me) else emptyList()
+                    val records = if (firstRound) dao.pendingRecords(me) else emptyList()
+                    val notes = if (firstRound) dao.pendingWeeklyNotes(me) else emptyList()
 
                     val res = api.sync(
                         token = token,
@@ -132,7 +205,7 @@ class SyncManager(
                     val acceptedNotes = res.accepted[KEY_NOTES].orEmpty().toSet()
                     notes.filter { it.id in acceptedNotes }.forEach { dao.markWeeklyNoteSynced(it.id, it.updatedAt) }
 
-                    res.changes[KEY_FLOCKS].orEmpty().forEach { applyFlock(it.toFlock()) }
+                    res.changes[KEY_FLOCKS].orEmpty().forEach { applyFlock(it.toFlock(), me) }
                     res.changes[KEY_RECORDS].orEmpty().forEach { applyRecord(it.toRecord()) }
                     res.changes[KEY_NOTES].orEmpty().forEach { applyNote(it.toNote()) }
 
@@ -141,14 +214,21 @@ class SyncManager(
                     firstRound = false
                     if (!res.more) break
                 }
+                if (fullDownload) prefs.accountChecked = true
                 val now = System.currentTimeMillis()
                 prefs.lastSyncedAt = now
-                _status.update { it.copy(isSyncing = false, lastSyncedAt = now, error = null) }
+                _status.update { it.copy(isSyncing = false, lastSyncedAt = now, error = null, accountChecked = prefs.accountChecked) }
+            } catch (e: CancellationException) {
+                // Stopped on purpose (e.g. replaced by a newer sync): not a failure
+                _status.update { it.copy(isSyncing = false) }
+                throw e
             } catch (e: ApiException) {
                 if (e.status == 401) {
-                    // Token revoked or expired: sign out locally, keep the records
+                    // Signed out by the server (account deleted on another phone, or sign-in expired).
+                    // The pens stay on this phone, in no account, so the farmer still sees them.
+                    dao.releaseFlocks(me)
                     prefs.clearAccount()
-                    _status.value = readStatus().copy(error = "Please sign in again to keep backing up.")
+                    publishAccount(error = "Please sign in again to keep backing up.")
                 } else {
                     _status.update { it.copy(isSyncing = false, error = e.message) }
                 }
@@ -162,10 +242,14 @@ class SyncManager(
 
     // --- Last write wins; never overwrite a newer edit that has not been uploaded yet ---
 
-    private suspend fun applyFlock(incoming: FlockEntity) {
+    private suspend fun applyFlock(incoming: FlockEntity, me: String) {
         val local = dao.anyFlock(incoming.id)
-        if (local != null && local.syncState == SyncState.PENDING && local.updatedAt > incoming.updatedAt) return
-        dao.upsertFlock(incoming.copy(isExample = false, syncState = SyncState.SYNCED))
+        if (local != null && local.syncState == SyncState.PENDING && local.updatedAt > incoming.updatedAt) {
+            // Our newer edit wins, but the server has this pen in the account, so it is ours
+            if (local.ownerId != me) dao.setFlockOwner(local.id, me)
+            return
+        }
+        dao.upsertFlock(incoming.copy(isExample = false, syncState = SyncState.SYNCED, ownerId = me))
     }
 
     private suspend fun applyRecord(incoming: DailyRecordEntity) {

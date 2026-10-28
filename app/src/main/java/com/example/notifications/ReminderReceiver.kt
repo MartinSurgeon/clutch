@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.data.local.AppPrefs
 import com.example.data.local.ClutchDatabase
 import com.example.ui.currentIsoDate
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +35,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val missing = ClutchDatabase.get(context).clutchDao().penNamesMissingRecord(currentIsoDate())
+                val owner = AppPrefs(context).currentOwner
+                val missing = ClutchDatabase.get(context).clutchDao().penNamesMissingRecord(currentIsoDate(), owner)
                 if (missing.isNotEmpty()) show(context, missing)
             } finally {
                 ReminderScheduler.reschedule(context)

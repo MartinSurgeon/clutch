@@ -87,10 +87,13 @@ class MigrationTest {
         createVersion1Database()
 
         val db = Room.databaseBuilder(context, ClutchDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, migration2To3(AppPrefs(context, "migration_signed_out").also { it.clearAccount() }))
             .allowMainThreadQueries()
             .build()
         val dao = db.clutchDao()
+
+        // Signed out when updating: the pen is in no account and still shows
+        assertEquals(listOf("Pen A"), dao.observeFlocks(null).first().map { it.name })
 
         val flocks = dao.getAllFlocksOnce()
         assertEquals(1, flocks.size)
@@ -124,5 +127,39 @@ class MigrationTest {
         assertEquals("Added extra drinkers", notes.first().actions)
 
         db.close()
+    }
+
+    @Test
+    fun `updating while signed in keeps backed-up pens and re-checks the rest`() = runTest {
+        createVersion1Database()
+        // A second pen that was already backed up
+        SQLiteDatabase.openDatabase(context.getDatabasePath(dbName).path, null, SQLiteDatabase.OPEN_READWRITE).use { raw ->
+            raw.insert("flocks", null, ContentValues().apply {
+                put("id", "pen_b"); put("name", "Pen B"); put("breed", "ISA Brown")
+                put("hensHoused", 300); put("placedDate", "2026-07-01"); put("ageWeeksAtPlacement", 18)
+                put("archived", 0); put("isExample", 0); put("updatedAt", 1L); put("deleted", 0); put("syncState", "SYNCED")
+            })
+        }
+        val prefs = AppPrefs(context, "migration_signed_in").apply {
+            authToken = "token"
+            userPhone = "0241234567"
+            syncCursor = 999L
+            accountChecked = true
+        }
+
+        val db = Room.databaseBuilder(context, ClutchDatabase::class.java, dbName)
+            .addMigrations(MIGRATION_1_2, migration2To3(prefs))
+            .allowMainThreadQueries()
+            .build()
+        val dao = db.clutchDao()
+
+        // Backed up: belongs to the signed-in farmer at once. Never sent: decided by the next full download.
+        assertEquals(listOf("Pen B"), dao.observeFlocks("0241234567").first().map { it.name })
+        assertEquals(listOf("Pen A"), dao.observeFlocks(null).first().map { it.name })
+        assertEquals(0L, prefs.syncCursor)
+        assertEquals(false, prefs.accountChecked)
+
+        db.close()
+        prefs.clearAccount()
     }
 }

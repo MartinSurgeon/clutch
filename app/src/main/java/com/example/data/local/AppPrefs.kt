@@ -33,6 +33,20 @@ class AppPrefs(context: Context, name: String = "clutch_prefs") {
         get() = prefs.getLong(KEY_LAST_SYNCED, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_SYNCED, value).apply()
 
+    /** The account whose pens this phone shows: its phone number, or null when signed out. */
+    val currentOwner: String?
+        get() = if (authToken != null) userPhone else null
+
+    /** True once the whole account has been downloaded since sign-in, so we know which pens are not in it. */
+    var accountChecked: Boolean
+        get() = prefs.getBoolean(KEY_ACCOUNT_CHECKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_ACCOUNT_CHECKED, value).apply()
+
+    /** Pens the farmer chose not to add to their account ("Keep separate"); not asked about again. */
+    var keptSeparatePenIds: Set<String>
+        get() = prefs.getStringSet(KEY_KEPT_SEPARATE, emptySet()).orEmpty().toSet()
+        set(value) = prefs.edit().putStringSet(KEY_KEPT_SEPARATE, value).apply()
+
     /** Debug builds only: lets a tester point the app at a server on the same Wi-Fi. */
     var serverUrlOverride: String?
         get() = prefs.getString(KEY_SERVER_URL, null)?.takeIf { it.isNotBlank() }
@@ -45,6 +59,8 @@ class AppPrefs(context: Context, name: String = "clutch_prefs") {
             .remove(KEY_USER_PHONE)
             .remove(KEY_SYNC_CURSOR)
             .remove(KEY_LAST_SYNCED)
+            .remove(KEY_ACCOUNT_CHECKED)
+            .remove(KEY_KEPT_SEPARATE)
             .apply()
     }
 
@@ -76,6 +92,8 @@ class AppPrefs(context: Context, name: String = "clutch_prefs") {
         private const val KEY_USER_PHONE = "user_phone"
         private const val KEY_SYNC_CURSOR = "sync_cursor"
         private const val KEY_LAST_SYNCED = "last_synced_at"
+        private const val KEY_ACCOUNT_CHECKED = "account_checked"
+        private const val KEY_KEPT_SEPARATE = "kept_separate_pen_ids"
         private const val KEY_SERVER_URL = "server_url_override"
         private const val KEY_REMINDER_ON = "reminder_enabled"
         private const val KEY_REMINDER_TIME = "reminder_minute_of_day"
